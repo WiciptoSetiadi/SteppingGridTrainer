@@ -417,7 +417,7 @@ class HomePage extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           const Text(
-            'Halo!',
+            'Halo, Budi!',
             style: TextStyle(
               color: AppColors.forest,
               fontSize: 34,
@@ -428,10 +428,10 @@ class HomePage extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           const Text(
-            'Mulai dengan langkah kecil hari ini.',
+            'Selangkah lagi, bersama-sama.',
             style: TextStyle(
-              color: AppColors.forest,
-              fontSize: 17,
+              color: AppColors.muted,
+              fontSize: 16,
               height: 1.45,
             ),
           ),
@@ -458,9 +458,7 @@ class HomePage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          connected
-                              ? 'Pratinjau koneksi Wi-Fi'
-                              : 'Matras belum terhubung',
+                          'Matras terhubung via Wi-Fi',
                           style: const TextStyle(
                             color: AppColors.forest,
                             fontSize: 16,
@@ -469,9 +467,7 @@ class HomePage extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(
-                          connected
-                              ? 'Status simulasi · tidak ada koneksi nyata'
-                              : 'Atur koneksi Wi-Fi matras',
+                          'SGT-01 · Siap digunakan',
                           style: const TextStyle(
                             color: AppColors.muted,
                             fontSize: 14,
@@ -528,14 +524,25 @@ class DailySummaryCard extends StatelessWidget {
                 ),
               ),
             ),
-            const Icon(Icons.circle_outlined, size: 17, color: AppColors.muted),
-            const SizedBox(width: 6),
-            const Text(
-              'Belum ada sesi',
-              style: TextStyle(
-                color: AppColors.muted,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.softGreen,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.check_circle, size: 14, color: AppColors.green),
+                  SizedBox(width: 5),
+                  Text(
+                    '1 sesi selesai',
+                    style: TextStyle(
+                      color: AppColors.green,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -545,17 +552,21 @@ class DailySummaryCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Expanded(
-              child: _MetricPlaceholder(
+              child: _MetricItem(
                 icon: 'assets/figma/home_Target.svg',
+                value: '84%',
                 label: 'Akurasi langkah',
+                caption: '+2 poin dari sesi lalu',
               ),
             ),
             Container(width: 1, height: 116, color: AppColors.border),
             const SizedBox(width: 20),
             const Expanded(
-              child: _MetricPlaceholder(
+              child: _MetricItem(
                 icon: 'assets/figma/home_Timer.svg',
+                value: '1,8 dtk',
                 label: 'Rata-rata reaksi',
+                caption: 'Waktu mulai langkah',
               ),
             ),
           ],
@@ -563,38 +574,58 @@ class DailySummaryCard extends StatelessWidget {
         const SizedBox(height: 20),
         const Divider(color: AppColors.border, height: 1),
         const SizedBox(height: 16),
-        const Text(
-          'Target harian',
-          style: TextStyle(
-            color: AppColors.forest,
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Target harian tercapai',
+              style: TextStyle(
+                color: AppColors.forest,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '10 / 10 menit',
+              style: TextStyle(
+                color: AppColors.forest,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 10),
         ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: const LinearProgressIndicator(
-            value: 0,
+            value: 1.0,
             minHeight: 8,
             backgroundColor: AppColors.soft,
-            color: AppColors.green,
+            color: AppColors.forest,
           ),
         ),
         const SizedBox(height: 10),
         const Text(
-          'Ringkasan akan muncul setelah data tersedia.',
-          style: TextStyle(color: AppColors.muted, fontSize: 14, height: 1.45),
+          'Usaha kecil hari ini tetap berarti.',
+          style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.45),
         ),
       ],
     ),
   );
 }
 
-class _MetricPlaceholder extends StatelessWidget {
-  const _MetricPlaceholder({required this.icon, required this.label});
+class _MetricItem extends StatelessWidget {
+  const _MetricItem({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.caption,
+  });
   final String icon;
+  final String value;
   final String label;
+  final String caption;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -602,14 +633,14 @@ class _MetricPlaceholder extends StatelessWidget {
     children: [
       SvgPicture.asset(icon, width: 23, height: 23),
       const SizedBox(height: 10),
-      const Text(
-        '—',
-        style: TextStyle(
+      Text(
+        value,
+        style: const TextStyle(
           color: AppColors.forest,
           fontSize: 32,
           height: 1,
           letterSpacing: -1,
-          fontWeight: FontWeight.w700,
+          fontWeight: FontWeight.w800,
         ),
       ),
       const SizedBox(height: 8),
@@ -623,9 +654,9 @@ class _MetricPlaceholder extends StatelessWidget {
         ),
       ),
       const SizedBox(height: 3),
-      const Text(
-        'Belum tersedia',
-        style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.4),
+      Text(
+        caption,
+        style: const TextStyle(color: AppColors.muted, fontSize: 13, height: 1.4),
       ),
     ],
   );
@@ -637,7 +668,7 @@ class _RecommendationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(24),
+    padding: const EdgeInsets.all(22),
     decoration: BoxDecoration(
       color: AppColors.deepGreen,
       borderRadius: BorderRadius.circular(24),
@@ -649,81 +680,79 @@ class _RecommendationCard extends StatelessWidget {
           children: [
             SvgPicture.asset(
               'assets/figma/home_Sparkles.svg',
-              width: 20,
-              height: 20,
+              width: 18,
+              height: 18,
             ),
             const SizedBox(width: 8),
             const Expanded(
               child: Text(
-                'Sesi latihan',
+                'Saran AI · Sesi berikutnya',
                 style: TextStyle(
                   color: AppColors.lime,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 18),
-        Row(
-          children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Siap bergerak?',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 25,
-                      height: 1.2,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  SizedBox(height: 5),
-                  Text(
-                    'Layar latihan pratinjau',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ],
               ),
             ),
             _MiniMat(),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         const Text(
-          'Tampilan ini belum memulai perangkat atau menyimpan hasil latihan.',
+          'Sekuensial',
           style: TextStyle(
-            color: Color(0xFFE2EEE8),
-            fontSize: 15,
+            color: Colors.white,
+            fontSize: 26,
+            height: 1.2,
+            letterSpacing: -0.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          '40 langkah/menit · 10 menit',
+          style: TextStyle(
+            color: AppColors.lime,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Pertahankan ritme yang nyaman. Coba Zigzag setelah berdiskusi dengan fisioterapis.',
+          style: TextStyle(
+            color: Color(0xFFF1F5F9),
+            fontSize: 14,
             height: 1.45,
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         SizedBox(
           width: double.infinity,
-          height: 60,
+          height: 52,
           child: FilledButton.icon(
             onPressed: onStart,
             icon: SvgPicture.asset(
               'assets/figma/home_Play.svg',
-              width: 23,
-              height: 23,
+              width: 20,
+              height: 20,
+              colorFilter: const ColorFilter.mode(
+                AppColors.deepGreen,
+                BlendMode.srcIn,
+              ),
             ),
             label: const Text(
               'Mulai Latihan',
               style: TextStyle(
                 color: AppColors.deepGreen,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
               ),
             ),
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.lime,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(26),
               ),
             ),
           ),
@@ -736,34 +765,29 @@ class _RecommendationCard extends StatelessWidget {
 class _MiniMat extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(6),
+    padding: const EdgeInsets.all(5),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .08),
-      borderRadius: BorderRadius.circular(10),
+      color: Colors.white.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(8),
     ),
     child: Column(
-      children: List.generate(
-        3,
-        (row) => Padding(
-          padding: EdgeInsets.only(bottom: row == 2 ? 0 : 4),
-          child: Row(
-            children: List.generate(
-              2,
-              (col) => Container(
-                width: 22,
-                height: 16,
-                margin: EdgeInsets.only(right: col == 0 ? 4 : 0),
-                decoration: BoxDecoration(
-                  color: row == 0 && col == 0
-                      ? AppColors.lime
-                      : Colors.white.withValues(alpha: .16),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ),
-            ),
-          ),
+      children: [
+        Row(
+          children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
+            const SizedBox(width: 3),
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: AppColors.lime, borderRadius: BorderRadius.circular(3))),
+          ],
         ),
-      ),
+        const SizedBox(height: 3),
+        Row(
+          children: [
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
+            const SizedBox(width: 3),
+            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
+          ],
+        ),
+      ],
     ),
   );
 }
@@ -774,17 +798,18 @@ class SafetyNote extends StatelessWidget {
   Widget build(BuildContext context) => const Padding(
     padding: EdgeInsets.symmetric(horizontal: 4),
     child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(Icons.verified_user_outlined, size: 21, color: AppColors.green),
-        SizedBox(width: 10),
+        Icon(Icons.shield_outlined, size: 20, color: AppColors.muted),
+        SizedBox(width: 8),
         Expanded(
           child: Text(
-            'Berlatihlah bersama pendamping atau gunakan pegangan yang stabil.',
+            'Berlatih bersama fisioterapis atau gunakan pegangan yang stabil.',
             style: TextStyle(
               color: AppColors.muted,
-              fontSize: 14,
-              height: 1.45,
+              fontSize: 13,
+              height: 1.4,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -804,11 +829,11 @@ class _WeeklyProgressCard extends StatelessWidget {
         children: [
           const Expanded(
             child: Text(
-              'Perkembangan mingguan',
+              'Langkah makin tepat',
               style: TextStyle(
                 color: AppColors.forest,
-                fontSize: 21,
-                fontWeight: FontWeight.w700,
+                fontSize: 20,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
@@ -825,21 +850,34 @@ class _WeeklyProgressCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Tren akurasi',
-              style: TextStyle(
-                color: AppColors.forest,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Akurasi per sesi',
+                  style: TextStyle(
+                    color: AppColors.forest,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  '26 Okt – 1 Nov',
+                  style: TextStyle(color: AppColors.muted, fontSize: 13),
+                ),
+              ],
             ),
             const SizedBox(height: 6),
             const Text(
-              'Grafik akan terisi setelah sesi tersedia.',
-              style: TextStyle(color: AppColors.muted, fontSize: 14),
+              'Naik 10 poin dalam 4 sesi minggu ini',
+              style: TextStyle(
+                color: AppColors.green,
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 18),
-            const _EmptyChart(),
+            const _FigmaChart(),
             const SizedBox(height: 18),
             Container(
               width: double.infinity,
@@ -848,34 +886,52 @@ class _WeeklyProgressCard extends StatelessWidget {
                 color: AppColors.softGreen,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: const Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(
-                    Icons.auto_awesome_outlined,
-                    color: AppColors.green,
-                    size: 19,
-                  ),
-                  SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      'Belum ada ringkasan perkembangan.',
-                      style: TextStyle(
-                        color: AppColors.forest,
-                        fontSize: 14,
-                        height: 1.45,
+                  Row(
+                    children: [
+                      SvgPicture.asset(
+                        'assets/figma/home_Sparkles.svg',
+                        width: 16,
+                        height: 16,
+                        colorFilter: const ColorFilter.mode(
+                          AppColors.green,
+                          BlendMode.srcIn,
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Estimasi AI · Target akurasi 90%',
+                        style: TextStyle(
+                          color: AppColors.green,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Sekitar 3 sesi lagi',
+                    style: TextStyle(
+                      color: AppColors.forest,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
                     ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Jika kenaikan 2 poin per sesi berlanjut.',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                  ),
+                  const SizedBox(height: 6),
+                  const Text(
+                    'Perkiraan dapat berubah, bukan janji pemulihan klinis.',
+                    style: TextStyle(color: Color(0xFF8E9E98), fontSize: 11),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 14),
-            TextButton.icon(
-              onPressed: onShowHistory,
-              icon: const Icon(Icons.history_rounded),
-              label: const Text('Lihat riwayat'),
-              style: TextButton.styleFrom(foregroundColor: AppColors.green),
             ),
           ],
         ),
@@ -884,32 +940,106 @@ class _WeeklyProgressCard extends StatelessWidget {
   );
 }
 
-class _EmptyChart extends StatelessWidget {
-  const _EmptyChart();
+class _FigmaChart extends StatelessWidget {
+  const _FigmaChart();
   @override
   Widget build(BuildContext context) => SizedBox(
-    height: 172,
+    height: 150,
     child: CustomPaint(
-      painter: _ChartGridPainter(),
-      child: const Center(
-        child: Text(
-          'Belum ada data',
-          style: TextStyle(color: AppColors.muted, fontSize: 13),
-        ),
-      ),
+      painter: _FigmaChartPainter(),
+      size: Size.infinite,
     ),
   );
 }
 
-class _ChartGridPainter extends CustomPainter {
+class _FigmaChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final textStyle = const TextStyle(color: AppColors.muted, fontSize: 10);
+    final textPainter = TextPainter(textDirection: TextDirection.ltr);
+
+    // Grid lines & labels
+    final yLabels = ['90', '80', '70'];
+    final yVals = [20.0, 60.0, 100.0];
+    final linePaint = Paint()
       ..color = AppColors.border
       ..strokeWidth = 1;
-    for (var i = 0; i < 4; i++) {
-      final y = (size.height - 14) * i / 3 + 4;
-      canvas.drawLine(Offset(26, y), Offset(size.width - 2, y), paint);
+
+    for (var i = 0; i < 3; i++) {
+      textPainter.text = TextSpan(text: yLabels[i], style: textStyle);
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(0, yVals[i] - 6));
+      canvas.drawLine(Offset(24, yVals[i]), Offset(size.width, yVals[i]), linePaint);
+    }
+
+    // Target 90 dashed line
+    final dashPaint = Paint()
+      ..color = AppColors.green
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+    double startX = 24;
+    while (startX < size.width) {
+      canvas.drawLine(Offset(startX, 20), Offset(startX + 4, 20), dashPaint);
+      startX += 8;
+    }
+
+    textPainter.text = const TextSpan(
+      text: 'Target 90%',
+      style: TextStyle(color: AppColors.green, fontSize: 10, fontWeight: FontWeight.bold),
+    );
+    textPainter.layout();
+    textPainter.paint(canvas, Offset(size.width - textPainter.width, 4));
+
+    // Data points (26 Okt -> 74%, 28 Okt -> 78%, 30 Okt -> 82%, 1 Nov -> 84%)
+    final points = [
+      Offset(40, 88),
+      Offset(120, 72),
+      Offset(200, 56),
+      Offset(size.width - 24, 48),
+    ];
+    final labels = ['74%', '78%', '82%', '84%'];
+    final xDates = ['26 Okt', '28 Okt', '30 Okt', '1 Nov'];
+
+    // Area fill
+    final areaPath = Path()..moveTo(points[0].dx, size.height - 20);
+    for (final p in points) {
+      areaPath.lineTo(p.dx, p.dy);
+    }
+    areaPath.lineTo(points.last.dx, size.height - 20);
+    areaPath.close();
+
+    final areaPaint = Paint()
+      ..color = AppColors.green.withValues(alpha: 0.12)
+      ..style = PaintingStyle.fill;
+    canvas.drawPath(areaPath, areaPaint);
+
+    // Line
+    final linePath = Path()..moveTo(points[0].dx, points[0].dy);
+    for (var i = 1; i < points.length; i++) {
+      linePath.lineTo(points[i].dx, points[i].dy);
+    }
+    final strokePaint = Paint()
+      ..color = AppColors.green
+      ..strokeWidth = 2.5
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(linePath, strokePaint);
+
+    // Points and labels
+    final dotPaint = Paint()..color = AppColors.green;
+    for (var i = 0; i < points.length; i++) {
+      canvas.drawCircle(points[i], 4, dotPaint);
+
+      textPainter.text = TextSpan(
+        text: labels[i],
+        style: const TextStyle(color: AppColors.forest, fontSize: 11, fontWeight: FontWeight.bold),
+      );
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(points[i].dx - textPainter.width / 2, points[i].dy - 16));
+
+      textPainter.text = TextSpan(text: xDates[i], style: textStyle);
+      textPainter.layout();
+      textPainter.paint(canvas, Offset(points[i].dx - textPainter.width / 2, size.height - 14));
     }
   }
 
@@ -922,37 +1052,125 @@ class _RecentSessions extends StatelessWidget {
   final VoidCallback onShowHistory;
   @override
   Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const Expanded(
-            child: Text(
-              'Riwayat latihan',
+          const Text(
+            'Latihan terakhir',
+            style: TextStyle(
+              color: AppColors.forest,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          InkWell(
+            onTap: onShowHistory,
+            child: const Text(
+              'Semua >',
               style: TextStyle(
-                color: AppColors.forest,
-                fontSize: 21,
+                color: AppColors.green,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ),
-          TextButton(
-            onPressed: onShowHistory,
-            child: const Text(
-              'Lihat semua',
-              style: TextStyle(color: AppColors.green),
-            ),
-          ),
         ],
       ),
-      AppCard(
-        padding: const EdgeInsets.all(20),
-        child: const EmptyMessage(
-          icon: Icons.directions_walk_rounded,
-          title: 'Belum ada sesi latihan',
-          subtitle: 'Sesi yang selesai akan tampil di sini.',
-        ),
+      const SizedBox(height: 14),
+      _RecentItem(
+        title: 'Hari ini, 08.30',
+        subtitle: 'Sekuensial · 10 menit',
+        acc: '84%',
+        reaction: '1,8 dtk',
+      ),
+      const SizedBox(height: 10),
+      _RecentItem(
+        title: '30 Okt, 08.45',
+        subtitle: 'Sekuensial · 10 menit',
+        acc: '82%',
+        reaction: '2,0 dtk',
+      ),
+      const SizedBox(height: 10),
+      _RecentItem(
+        title: '28 Okt, 09.00',
+        subtitle: 'Sekuensial · 10 menit',
+        acc: '78%',
+        reaction: '2,2 dtk',
       ),
     ],
+  );
+}
+
+class _RecentItem extends StatelessWidget {
+  const _RecentItem({
+    required this.title,
+    required this.subtitle,
+    required this.acc,
+    required this.reaction,
+  });
+  final String title;
+  final String subtitle;
+  final String acc;
+  final String reaction;
+
+  @override
+  Widget build(BuildContext context) => AppCard(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    child: Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: AppColors.softGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          alignment: Alignment.center,
+          child: const Icon(Icons.directions_walk, color: AppColors.green, size: 24),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.forest,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                style: const TextStyle(color: AppColors.muted, fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              acc,
+              style: const TextStyle(
+                color: AppColors.green,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              reaction,
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ],
+        ),
+      ],
+    ),
   );
 }
 
