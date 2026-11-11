@@ -15,8 +15,8 @@ class SupabaseService {
   SupabaseService._internal();
 
   // Konfigurasi endpoint
-  String supabaseUrl = const String.fromEnvironment('SUPABASE_URL', defaultValue: '');
-  String supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: '');
+  String supabaseUrl = const String.fromEnvironment('SUPABASE_URL', defaultValue: 'https://rtvtralxxvzxitdqjrco.supabase.co');
+  String supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY', defaultValue: 'sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r');
 
   bool get isConfigured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
