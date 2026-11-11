@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app
+from app.core.config import settings
 
 client = TestClient(app)
 
@@ -21,7 +22,8 @@ def test_webhook_session_completed_accepts_background_task():
             "user_id": 1
         }
     }
-    response = client.post("/webhook/session-completed", json=payload)
+    headers = {"X-Webhook-Secret": settings.WEBHOOK_SECRET} if settings.WEBHOOK_SECRET else {}
+    response = client.post("/webhook/session-completed", json=payload, headers=headers)
     assert response.status_code == 202
     data = response.json()
     assert data["status"] == "accepted"
@@ -34,7 +36,8 @@ def test_webhook_ignores_non_completed_status():
             "session_status": "running"
         }
     }
-    response = client.post("/webhook/session-completed", json=payload)
+    headers = {"X-Webhook-Secret": settings.WEBHOOK_SECRET} if settings.WEBHOOK_SECRET else {}
+    response = client.post("/webhook/session-completed", json=payload, headers=headers)
     assert response.status_code == 202
     data = response.json()
     assert data["status"] == "ignored"
