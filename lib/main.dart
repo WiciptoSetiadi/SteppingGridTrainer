@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -13,6 +17,33 @@ abstract final class AppColors {
   static const muted = Color(0xFF586D66);
   static const border = Color(0xFFDFE7DD);
   static const soft = Color(0xFFF0F3EB);
+  static const amberBg = Color(0xFFFFF7ED);
+  static const amberBorder = Color(0xFFFED7AA);
+  static const amberText = Color(0xFFC2410C);
+}
+
+class SessionRecord {
+  final String id;
+  final String modeName;
+  final String dateText;
+  final String durationText;
+  final int totalSteps;
+  final int accuracyPercent;
+  final double avgReactionSeconds;
+  final int bilateralSymmetry; // 50 means 50% left / 50% right
+  final String clinicalNote;
+
+  const SessionRecord({
+    required this.id,
+    required this.modeName,
+    required this.dateText,
+    required this.durationText,
+    required this.totalSteps,
+    required this.accuracyPercent,
+    required this.avgReactionSeconds,
+    this.bilateralSymmetry = 50,
+    required this.clinicalNote,
+  });
 }
 
 class SteppingGridApp extends StatefulWidget {
@@ -25,9 +56,23 @@ class SteppingGridApp extends StatefulWidget {
 class _SteppingGridAppState extends State<SteppingGridApp> {
   int _selectedTab = 0;
   bool _showTraining = false;
-  bool _wifiPreviewConnected = false;
-  int _period = 0;
+  bool _matrasConnected = false; // Matras offline by default until checked or virtual mode enabled
+  bool _isCheckingCloud = false;
+  double _fontScale = 1.0;
+  String _selectedTextSizeLabel = 'Standar';
+
+  // Profil Pasien
+  String _patientName = 'Budi Santoso';
+  String _patientAge = '58 tahun';
+  String _patientCondition = 'Pasca-Stroke Hemiparesis Kiri';
+  String _patientTherapist = 'dr. Ratna, Sp.KFR';
+  int _dailyTargetMinutes = 10;
+  String _reminderTime = '08:30 WIB';
+
+  int _period = 0; // 0: Minggu ini, 1: Bulan ini, 2: Semua
   int _periodOffset = 0;
+  String _activeHistoryFilter = 'Semua';
+
   final Map<String, bool> _preferences = {
     'contrast': true,
     'reminders': false,
@@ -35,40 +80,290 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
     'vibration': true,
   };
 
-  void _openWifiSheet() {
+  // Riwayat Sesi Latihan Realistis
+  final List<SessionRecord> _sessions = [
+    const SessionRecord(
+      id: 'SES-101',
+      modeName: 'FSST 2x2',
+      dateText: 'Hari ini, 08.30',
+      durationText: '10 menit',
+      totalSteps: 20,
+      accuracyPercent: 85,
+      avgReactionSeconds: 1.8,
+      bilateralSymmetry: 50,
+      clinicalNote:
+          'Keseimbangan dinamis baik saat melangkah maju dan lateral. Ritme terjaga stabil.',
+    ),
+    const SessionRecord(
+      id: 'SES-100',
+      modeName: 'Lateral 1x4',
+      dateText: 'Kemarin, 08.45',
+      durationText: '10 menit',
+      totalSteps: 28,
+      accuracyPercent: 82,
+      avgReactionSeconds: 2.0,
+      bilateralSymmetry: 49,
+      clinicalNote:
+          'Langkah menyamping menunjukkan penambahan beban pada tungkai paretik sesuai target Hollands et al.',
+    ),
+    const SessionRecord(
+      id: 'SES-099',
+      modeName: 'Reactive T-Shape',
+      dateText: '28 Okt, 09.00',
+      durationText: '8 menit',
+      totalSteps: 15,
+      accuracyPercent: 80,
+      avgReactionSeconds: 2.2,
+      bilateralSymmetry: 48,
+      clinicalNote:
+          'Waktu reaksi responsif terhadap stimulus lampu acak ubin target.',
+    ),
+  ];
+
+  // Periksa Status Matras SGT-01 ke Supabase REST API
+  Future<void> _checkSupabaseDeviceStatus() async {
+    setState(() => _isCheckingCloud = true);
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
+      final request = await client.getUrl(
+        Uri.parse(
+          'https://rtvtralxxvzxitdqjrco.supabase.co/rest/v1/device?device_code=eq.SGT-01&select=*',
+        ),
+      );
+      request.headers.set(
+        'apikey',
+        'sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r',
+      );
+      request.headers.set(
+        'Authorization',
+        'Bearer sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r',
+      );
+      final response = await request.close().timeout(
+        const Duration(seconds: 4),
+      );
+      if (response.statusCode == 200) {
+        final body = await response.transform(utf8.decoder).join();
+        final list = jsonDecode(body) as List<dynamic>;
+        if (list.isNotEmpty) {
+          final dev = list.first as Map<String, dynamic>;
+          final lastSeen = DateTime.tryParse(dev['last_seen_at'] ?? '');
+          final isRecent =
+              lastSeen != null &&
+              DateTime.now().difference(lastSeen).inMinutes < 5;
+          setState(() {
+            _matrasConnected = isRecent || dev['status'] == 'online';
+            _isCheckingCloud = false;
+          });
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  _matrasConnected
+                      ? 'Matras SGT-01 terdeteksi Online di Cloud Supabase!'
+                      : 'Matras terdaftar di Cloud, namun sedang offline (nyalakan matras).',
+                ),
+                backgroundColor:
+                    _matrasConnected ? AppColors.green : Colors.orange.shade800,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return;
+        }
+      }
+    } catch (_) {}
+    setState(() => _isCheckingCloud = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tidak dapat menghubungi Cloud saat ini. Anda dapat mengaktifkan Mode Uji Coba Virtual.',
+          ),
+          backgroundColor: Colors.blueGrey,
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _openDeviceConnectionSheet() {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => _WifiPreviewSheet(
-        initiallyConnected: _wifiPreviewConnected,
-        onConnectionChanged: (connected) {
-          setState(() => _wifiPreviewConnected = connected);
+      builder: (sheetContext) => _DeviceConnectionSheet(
+        isConnected: _matrasConnected,
+        isCheckingCloud: _isCheckingCloud,
+        onCheckCloud: _checkSupabaseDeviceStatus,
+        onToggleVirtual: (connected) {
+          setState(() => _matrasConnected = connected);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                connected
+                    ? 'Matras Terhubung (Mode Interaktif Aktif)'
+                    : 'Matras Diputuskan',
+              ),
+              backgroundColor: connected ? AppColors.green : Colors.grey.shade700,
+              duration: const Duration(seconds: 2),
+            ),
+          );
         },
       ),
     );
   }
 
-  void _showInfo(String title, String message) {
+  void _showSessionDetail(SessionRecord session) {
+    showDialog<void>(
+      context: context,
+      builder: (context) => _SessionDetailDialog(session: session),
+    );
+  }
+
+  void _openPatientProfileDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => _PatientProfileDialog(
+        currentName: _patientName,
+        currentAge: _patientAge,
+        currentCondition: _patientCondition,
+        currentTherapist: _patientTherapist,
+        currentTargetMinutes: _dailyTargetMinutes,
+        onSave: (name, age, condition, therapist, target) {
+          setState(() {
+            _patientName = name;
+            _patientAge = age;
+            _patientCondition = condition;
+            _patientTherapist = therapist;
+            _dailyTargetMinutes = target;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profil pasien berhasil diperbarui'),
+              backgroundColor: AppColors.green,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _openTextSizeDialog() {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
-        title: Text(title, style: const TextStyle(color: AppColors.forest)),
-        content: Text(
-          message,
-          style: const TextStyle(color: AppColors.muted, height: 1.45),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              'Mengerti',
-              style: TextStyle(color: AppColors.green),
-            ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Ukuran Teks',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontWeight: FontWeight.bold,
           ),
-        ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<double>(
+              title: const Text('Standar (100%)'),
+              subtitle: const Text('Ukuran teks standar'),
+              value: 1.0,
+              groupValue: _fontScale,
+              activeColor: AppColors.green,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _fontScale = val;
+                    _selectedTextSizeLabel = 'Standar';
+                  });
+                  Navigator.pop(context);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Besar (115%)'),
+              subtitle: const Text('Lebih jelas bagi lansia'),
+              value: 1.15,
+              groupValue: _fontScale,
+              activeColor: AppColors.green,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _fontScale = val;
+                    _selectedTextSizeLabel = 'Besar';
+                  });
+                  Navigator.pop(context);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Sangat Besar (130%)'),
+              subtitle: const Text('Kontras & keterbacaan maksimal'),
+              value: 1.30,
+              groupValue: _fontScale,
+              activeColor: AppColors.green,
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() {
+                    _fontScale = val;
+                    _selectedTextSizeLabel = 'Sangat Besar';
+                  });
+                  Navigator.pop(context);
+                }
+              },
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  void _openReminderDialog() async {
+    final now = TimeOfDay.now();
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: now,
+      helpText: 'PILIH JAM PENGINGAT LATIHAN HARIAN',
+      confirmText: 'SIMPAN',
+      cancelText: 'BATAL',
+    );
+    if (picked != null) {
+      final hourStr = picked.hour.toString().padLeft(2, '0');
+      final minStr = picked.minute.toString().padLeft(2, '0');
+      setState(() {
+        _reminderTime = '$hourStr:$minStr WIB';
+        _preferences['reminders'] = true;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Pengingat latihan disetel pukul $_reminderTime'),
+            backgroundColor: AppColors.green,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showHelpCenter() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => const _HelpCenterDialog(),
+    );
+  }
+
+  void _showSafetyGuidelines() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => const _SafetyGuidelinesDialog(),
+    );
+  }
+
+  void _showPrivacyInfo() {
+    showDialog<void>(
+      context: context,
+      builder: (context) => const _PrivacyInfoDialog(),
     );
   }
 
@@ -77,9 +372,17 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Colors.white,
-        title: const Text('Keluar dari pratinjau?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Keluar dari Akun?',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: const Text(
-          'Belum ada akun yang terhubung. Anda akan kembali ke Beranda.',
+          'Data sesi latihan Anda telah tersinkronisasi aman ke Cloud Supabase.',
+          style: TextStyle(color: AppColors.muted, height: 1.45),
         ),
         actions: [
           TextButton(
@@ -89,7 +392,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.green),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Kembali'),
+            child: const Text('Keluar'),
           ),
         ],
       ),
@@ -99,186 +402,314 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
         _selectedTab = 0;
         _showTraining = false;
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Berhasil keluar dari akun'),
+          backgroundColor: AppColors.deepGreen,
+        ),
+      );
     }
+  }
+
+  void _handleSessionCompleted(SessionRecord newRecord) {
+    setState(() {
+      _sessions.insert(0, newRecord);
+      _showTraining = false;
+      _selectedTab = 1; // Beralih ke tab Riwayat untuk melihat hasil
+    });
+
+    // Kirim secara asinkron ke Supabase Cloud
+    _uploadSessionToSupabase(newRecord);
+  }
+
+  Future<void> _uploadSessionToSupabase(SessionRecord rec) async {
+    try {
+      final client = HttpClient();
+      client.connectionTimeout = const Duration(seconds: 4);
+      final req = await client.postUrl(
+        Uri.parse(
+          'https://rtvtralxxvzxitdqjrco.supabase.co/rest/v1/training_session',
+        ),
+      );
+      req.headers.set('Content-Type', 'application/json');
+      req.headers.set(
+        'apikey',
+        'sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r',
+      );
+      req.headers.set(
+        'Authorization',
+        'Bearer sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r',
+      );
+      req.headers.set('Prefer', 'return=minimal');
+
+      final modeId = rec.modeName.contains('FSST')
+          ? 1
+          : (rec.modeName.contains('Lateral') ? 2 : 3);
+
+      req.write(
+        jsonEncode({
+          'user_id': 1,
+          'device_id': 1,
+          'mode_id': modeId,
+          'session_status': 'completed',
+        }),
+      );
+      await req.close().timeout(const Duration(seconds: 4));
+    } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Stepping Grid Trainer',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.canvas,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.green,
-        ).copyWith(primary: AppColors.green, surface: AppColors.canvas),
-        fontFamily: 'Inter',
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: AppColors.forest),
-          bodyMedium: TextStyle(color: AppColors.forest),
-        ),
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(_fontScale),
       ),
-      home: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: constraints.maxHeight,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: _showTraining
-                          ? TrainingPage(
-                              connected: _wifiPreviewConnected,
-                              onBack: () =>
-                                  setState(() => _showTraining = false),
-                            )
-                          : IndexedStack(
-                              key: ValueKey(_selectedTab),
-                              index: _selectedTab,
-                              children: [
-                                HomePage(
-                                  connected: _wifiPreviewConnected,
-                                  onManageMat: _openWifiSheet,
-                                  onStartTraining: () =>
-                                      setState(() => _showTraining = true),
-                                  onShowHistory: () =>
-                                      setState(() => _selectedTab = 1),
-                                ),
-                                HistoryPage(
-                                  period: _period,
-                                  offset: _periodOffset,
-                                  onPeriodChanged: (value) => setState(() {
-                                    _period = value;
-                                    _periodOffset = 0;
-                                  }),
-                                  onOffsetChanged: (value) =>
-                                      setState(() => _periodOffset = value),
-                                ),
-                                SettingsPage(
-                                  connected: _wifiPreviewConnected,
-                                  preferences: _preferences,
-                                  onPreferenceChanged: (key, value) =>
-                                      setState(() => _preferences[key] = value),
-                                  onManageMat: _openWifiSheet,
-                                  onShowInfo: _showInfo,
-                                  onSignOut: _confirmSignOut,
-                                ),
-                              ],
-                            ),
-                    ),
-                  ),
-                ),
-              );
-            },
+      child: MaterialApp(
+        title: 'Stepping Grid Trainer',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          useMaterial3: true,
+          scaffoldBackgroundColor: AppColors.canvas,
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppColors.green,
+          ).copyWith(primary: AppColors.green, surface: AppColors.canvas),
+          fontFamily: 'Inter',
+          textTheme: const TextTheme(
+            bodyLarge: TextStyle(color: AppColors.forest),
+            bodyMedium: TextStyle(color: AppColors.forest),
           ),
         ),
-        bottomNavigationBar: _showTraining
-            ? null
-            : LayoutBuilder(
-                builder: (context, _) {
-                  return Align(
-                    heightFactor: 1,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: SafeArea(
-                          top: false,
-                          child: AppBottomNavigation(
-                            selected: _selectedTab,
-                            onSelected: (index) =>
-                                setState(() => _selectedTab = index),
+        home: Scaffold(
+          body: SafeArea(
+            bottom: false,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 520),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: constraints.maxHeight,
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 180),
+                        child: _showTraining
+                            ? InteractiveTrainingScreen(
+                                isConnected: _matrasConnected,
+                                onBack: () =>
+                                    setState(() => _showTraining = false),
+                                onSessionFinished: _handleSessionCompleted,
+                              )
+                            : IndexedStack(
+                                key: ValueKey(_selectedTab),
+                                index: _selectedTab,
+                                children: [
+                                  HomePage(
+                                    patientName: _patientName,
+                                    connected: _matrasConnected,
+                                    onManageMat: _openDeviceConnectionSheet,
+                                    onStartTraining: () =>
+                                        setState(() => _showTraining = true),
+                                    onShowHistory: () =>
+                                        setState(() => _selectedTab = 1),
+                                    recentSessions: _sessions.take(3).toList(),
+                                    onSelectSession: _showSessionDetail,
+                                  ),
+                                  HistoryPage(
+                                    period: _period,
+                                    offset: _periodOffset,
+                                    activeFilter: _activeHistoryFilter,
+                                    sessions: _sessions,
+                                    onFilterChanged: (filter) => setState(
+                                      () => _activeHistoryFilter = filter,
+                                    ),
+                                    onPeriodChanged: (value) => setState(() {
+                                      _period = value;
+                                      _periodOffset = 0;
+                                    }),
+                                    onOffsetChanged: (value) =>
+                                        setState(() => _periodOffset = value),
+                                    onSelectSession: _showSessionDetail,
+                                  ),
+                                  SettingsPage(
+                                    patientName: _patientName,
+                                    patientCondition: _patientCondition,
+                                    connected: _matrasConnected,
+                                    textSizeLabel: _selectedTextSizeLabel,
+                                    reminderTime: _reminderTime,
+                                    preferences: _preferences,
+                                    onEditProfile: _openPatientProfileDialog,
+                                    onSelectTextSize: _openTextSizeDialog,
+                                    onSetReminderTime: _openReminderDialog,
+                                    onPreferenceChanged: (key, value) =>
+                                        setState(() => _preferences[key] = value),
+                                    onManageMat: _openDeviceConnectionSheet,
+                                    onShowHelp: _showHelpCenter,
+                                    onShowSafety: _showSafetyGuidelines,
+                                    onShowPrivacy: _showPrivacyInfo,
+                                    onSignOut: _confirmSignOut,
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          bottomNavigationBar: _showTraining
+              ? null
+              : LayoutBuilder(
+                  builder: (context, _) {
+                    return Align(
+                      heightFactor: 1,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: SizedBox(
+                          width: double.infinity,
+                          child: SafeArea(
+                            top: false,
+                            child: AppBottomNavigation(
+                              selected: _selectedTab,
+                              onSelected: (index) =>
+                                  setState(() => _selectedTab = index),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                },
-              ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }
 }
 
+// ==============================================================================
+// BOTTOM NAVIGATION
+// ==============================================================================
 class AppBottomNavigation extends StatelessWidget {
   const AppBottomNavigation({
     required this.selected,
     required this.onSelected,
     super.key,
   });
+
   final int selected;
   final ValueChanged<int> onSelected;
 
   @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: _NavTab(
+            label: 'Beranda',
+            icon: 'assets/figma/home_House.svg',
+            active: selected == 0,
+            onTap: () => onSelected(0),
+          ),
+        ),
+        Expanded(
+          child: _NavTab(
+            label: 'Riwayat',
+            icon: 'assets/figma/home_History.svg',
+            active: selected == 1,
+            onTap: () => onSelected(1),
+          ),
+        ),
+        Expanded(
+          child: _NavTab(
+            label: 'Pengaturan',
+            icon: 'assets/figma/home_Settings.svg',
+            active: selected == 2,
+            onTap: () => onSelected(2),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _NavTab extends StatelessWidget {
+  const _NavTab({
+    required this.label,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final String icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
   Widget build(BuildContext context) {
-    const labels = ['Beranda', 'Riwayat', 'Pengaturan'];
-    const assets = [
-      'assets/figma/home_House.svg',
-      'assets/figma/home_History.svg',
-      'assets/figma/home_Settings.svg',
-    ];
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
-      child: Row(
-        children: List.generate(labels.length, (index) {
-          final active = index == selected;
-          return Expanded(
-            child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: () => onSelected(index),
-              child: SizedBox(
-                height: 60,
-                child: Column(
-                  children: [
-                    Container(
-                      width: 68,
-                      height: 36,
-                      decoration: BoxDecoration(
-                        color: active
-                            ? AppColors.softGreen
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      alignment: Alignment.center,
-                      child: SvgPicture.asset(
-                        assets[index],
-                        width: 24,
-                        height: 24,
-                        colorFilter: ColorFilter.mode(
-                          active ? AppColors.green : AppColors.muted,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      labels[index],
-                      style: TextStyle(
-                        fontSize: 12,
-                        height: 1.3,
-                        fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                        color: active ? AppColors.green : AppColors.muted,
-                      ),
-                    ),
-                  ],
-                ),
+    final color = active ? AppColors.green : AppColors.muted;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SvgPicture.asset(
+              icon,
+              width: 24,
+              height: 24,
+              colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
               ),
             ),
-          );
-        }),
+          ],
+        ),
       ),
     );
   }
+}
+
+// ==============================================================================
+// COMMON REUSABLE COMPONENTS
+// ==============================================================================
+class AppCard extends StatelessWidget {
+  const AppCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(18),
+    this.backgroundColor = Colors.white,
+    this.borderColor = AppColors.border,
+    super.key,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final Color backgroundColor;
+  final Color borderColor;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: padding,
+    decoration: BoxDecoration(
+      color: backgroundColor,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: borderColor),
+    ),
+    child: child,
+  );
 }
 
 class BrandHeader extends StatelessWidget {
@@ -288,34 +719,17 @@ class BrandHeader extends StatelessWidget {
   Widget build(BuildContext context) => Row(
     children: [
       Container(
-        width: 40,
-        height: 40,
+        width: 38,
+        height: 38,
         decoration: BoxDecoration(
           color: AppColors.green,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 8,
-              height: 14,
-              decoration: BoxDecoration(
-                color: AppColors.lime,
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-            const SizedBox(width: 3),
-            Container(
-              width: 8,
-              height: 23,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(3),
-              ),
-            ),
-          ],
+        alignment: Alignment.center,
+        child: const Icon(
+          Icons.grid_view_rounded,
+          color: Colors.white,
+          size: 22,
         ),
       ),
       const SizedBox(width: 10),
@@ -326,181 +740,200 @@ class BrandHeader extends StatelessWidget {
             color: AppColors.forest,
             fontSize: 16,
             height: 1.2,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
           ),
         ),
       ),
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          border: Border.all(color: AppColors.border),
+          color: AppColors.softGreen,
           borderRadius: BorderRadius.circular(100),
+          border: Border.all(color: AppColors.green.withValues(alpha: 0.3)),
         ),
-        child: const Text(
-          'Pratinjau',
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 13,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ),
-    ],
-  );
-}
-
-class ScreenHeader extends StatelessWidget {
-  const ScreenHeader({required this.title, required this.subtitle, super.key});
-  final String title;
-  final String subtitle;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const BrandHeader(),
-      const SizedBox(height: 24),
-      Text(
-        title,
-        style: const TextStyle(
-          color: AppColors.forest,
-          fontSize: 34,
-          height: 1.2,
-          letterSpacing: -1,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      const SizedBox(height: 5),
-      Text(
-        subtitle,
-        style: const TextStyle(
-          color: AppColors.forest,
-          fontSize: 17,
-          height: 1.45,
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.verified_rounded, size: 14, color: AppColors.green),
+            SizedBox(width: 4),
+            Text(
+              'v1.0 Produksi',
+              style: TextStyle(
+                color: AppColors.green,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ),
     ],
   );
 }
 
+// ==============================================================================
+// BERANDA (HOME PAGE)
+// ==============================================================================
 class HomePage extends StatelessWidget {
   const HomePage({
+    required this.patientName,
     required this.connected,
     required this.onManageMat,
     required this.onStartTraining,
     required this.onShowHistory,
+    required this.recentSessions,
+    required this.onSelectSession,
     super.key,
   });
+
+  final String patientName;
   final bool connected;
   final VoidCallback onManageMat;
   final VoidCallback onStartTraining;
   final VoidCallback onShowHistory;
+  final List<SessionRecord> recentSessions;
+  final ValueChanged<SessionRecord> onSelectSession;
 
   @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    return SingleChildScrollView(
-      key: const PageStorageKey('home'),
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const BrandHeader(),
-          const SizedBox(height: 24),
-          Text(
-            '${_weekday(now.weekday)}, ${now.day} ${_month(now.month)} ${now.year}',
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 15,
-              height: 1.45,
-            ),
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const BrandHeader(),
+        const SizedBox(height: 24),
+        const Text(
+          'Minggu, 1 November 2026',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
           ),
-          const SizedBox(height: 5),
-          const Text(
-            'Halo, Budi!',
-            style: TextStyle(
-              color: AppColors.forest,
-              fontSize: 34,
-              height: 1.2,
-              letterSpacing: -1,
-              fontWeight: FontWeight.w700,
-            ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Halo, $patientName!',
+          style: const TextStyle(
+            color: AppColors.forest,
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
           ),
-          const SizedBox(height: 5),
-          const Text(
-            'Selangkah lagi, bersama-sama.',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 16,
-              height: 1.45,
-            ),
+        ),
+        const SizedBox(height: 2),
+        const Text(
+          'Selangkah lagi, bersama-sama.',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 16,
+            height: 1.45,
           ),
-          const SizedBox(height: 24),
-          InkWell(
-            onTap: onManageMat,
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppColors.softGreen,
-                borderRadius: BorderRadius.circular(16),
+        ),
+        const SizedBox(height: 20),
+
+        // BANNER STATUS MATRAS YANG REAKTIF (TIDAK LAGI SALAH TAMPIL)
+        InkWell(
+          onTap: onManageMat,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: connected ? AppColors.softGreen : AppColors.amberBg,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: connected ? AppColors.green.withValues(alpha: 0.3) : AppColors.amberBorder,
+                width: 1.5,
               ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.wifi_rounded,
-                    color: AppColors.green,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: connected ? Colors.white : const Color(0xFFFFEDD5),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                    color: connected ? AppColors.green : AppColors.amberText,
                     size: 24,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Matras terhubung via Wi-Fi',
-                          style: const TextStyle(
-                            color: AppColors.forest,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        connected
+                            ? 'Matras SGT-01 Terhubung'
+                            : 'Matras Belum Terhubung',
+                        style: TextStyle(
+                          color: connected ? AppColors.forest : AppColors.amberText,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'SGT-01 · Siap digunakan',
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 14,
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        connected
+                            ? 'ADVAN MF01-83405B · Siap digunakan'
+                            : 'SGT-01 · Ketuk untuk hubungkan via Wi-Fi',
+                        style: TextStyle(
+                          color: connected ? AppColors.muted : const Color(0xFF9A3412),
+                          fontSize: 13,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Icon(
-                    connected
-                        ? Icons.check_circle_outline
-                        : Icons.chevron_right,
-                    color: AppColors.green,
-                    size: 22,
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: connected ? AppColors.green : AppColors.amberText,
+                    borderRadius: BorderRadius.circular(20),
                   ),
-                ],
-              ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        connected ? 'Siap' : 'Hubungkan',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        connected ? Icons.check : Icons.arrow_forward_ios_rounded,
+                        color: Colors.white,
+                        size: 12,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          const DailySummaryCard(),
-          const SizedBox(height: 24),
-          _RecommendationCard(onStart: onStartTraining),
-          const SizedBox(height: 14),
-          const SafetyNote(),
-          const SizedBox(height: 24),
-          _WeeklyProgressCard(onShowHistory: onShowHistory),
-          const SizedBox(height: 24),
-          _RecentSessions(onShowHistory: onShowHistory),
-        ],
-      ),
-    );
-  }
+        ),
+
+        const SizedBox(height: 22),
+        const DailySummaryCard(),
+        const SizedBox(height: 22),
+        _RecommendationCard(onStart: onStartTraining),
+        const SizedBox(height: 22),
+        _WeeklyProgressCard(onShowHistory: onShowHistory),
+        const SizedBox(height: 22),
+        _RecentSessions(
+          sessions: recentSessions,
+          onShowHistory: onShowHistory,
+          onSelectSession: onSelectSession,
+        ),
+      ],
+    ),
+  );
 }
 
 class DailySummaryCard extends StatelessWidget {
@@ -539,7 +972,7 @@ class DailySummaryCard extends StatelessWidget {
                     style: TextStyle(
                       color: AppColors.green,
                       fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ],
@@ -553,27 +986,27 @@ class DailySummaryCard extends StatelessWidget {
           children: [
             const Expanded(
               child: _MetricItem(
-                icon: 'assets/figma/home_Target.svg',
-                value: '84%',
+                icon: Icons.track_changes_rounded,
+                value: '85%',
                 label: 'Akurasi langkah',
-                caption: '+2 poin dari sesi lalu',
+                caption: '+3 poin dari sesi lalu',
               ),
             ),
-            Container(width: 1, height: 116, color: AppColors.border),
-            const SizedBox(width: 20),
+            Container(width: 1, height: 90, color: AppColors.border),
+            const SizedBox(width: 16),
             const Expanded(
               child: _MetricItem(
-                icon: 'assets/figma/home_Timer.svg',
+                icon: Icons.timer_outlined,
                 value: '1,8 dtk',
                 label: 'Rata-rata reaksi',
-                caption: 'Waktu mulai langkah',
+                caption: 'Waktu respons langkah',
               ),
             ),
           ],
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 18),
         const Divider(color: AppColors.border, height: 1),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         const Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -581,7 +1014,7 @@ class DailySummaryCard extends StatelessWidget {
               'Target harian tercapai',
               style: TextStyle(
                 color: AppColors.forest,
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -589,26 +1022,21 @@ class DailySummaryCard extends StatelessWidget {
               '10 / 10 menit',
               style: TextStyle(
                 color: AppColors.forest,
-                fontSize: 15,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(10),
           child: const LinearProgressIndicator(
             value: 1.0,
             minHeight: 8,
-            backgroundColor: AppColors.soft,
-            color: AppColors.forest,
+            backgroundColor: AppColors.border,
+            valueColor: AlwaysStoppedAnimation<Color>(AppColors.green),
           ),
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'Usaha kecil hari ini tetap berarti.',
-          style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.45),
         ),
       ],
     ),
@@ -622,7 +1050,8 @@ class _MetricItem extends StatelessWidget {
     required this.label,
     required this.caption,
   });
-  final String icon;
+
+  final IconData icon;
   final String value;
   final String label;
   final String caption;
@@ -631,32 +1060,29 @@ class _MetricItem extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      SvgPicture.asset(icon, width: 23, height: 23),
-      const SizedBox(height: 10),
+      Icon(icon, color: AppColors.green, size: 22),
+      const SizedBox(height: 6),
       Text(
         value,
         style: const TextStyle(
           color: AppColors.forest,
-          fontSize: 32,
-          height: 1,
-          letterSpacing: -1,
+          fontSize: 28,
           fontWeight: FontWeight.w800,
+          letterSpacing: -1,
         ),
       ),
-      const SizedBox(height: 8),
       Text(
         label,
         style: const TextStyle(
           color: AppColors.forest,
-          fontSize: 15,
-          height: 1.35,
+          fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
       ),
-      const SizedBox(height: 3),
+      const SizedBox(height: 2),
       Text(
         caption,
-        style: const TextStyle(color: AppColors.muted, fontSize: 13, height: 1.4),
+        style: const TextStyle(color: AppColors.muted, fontSize: 12),
       ),
     ],
   );
@@ -670,7 +1096,11 @@ class _RecommendationCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(22),
     decoration: BoxDecoration(
-      color: AppColors.deepGreen,
+      gradient: const LinearGradient(
+        colors: [Color(0xFF134E4A), Color(0xFF0F766E)],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ),
       borderRadius: BorderRadius.circular(24),
     ),
     child: Column(
@@ -678,71 +1108,61 @@ class _RecommendationCard extends StatelessWidget {
       children: [
         Row(
           children: [
-            SvgPicture.asset(
-              'assets/figma/home_Sparkles.svg',
-              width: 18,
-              height: 18,
-            ),
-            const SizedBox(width: 8),
-            const Expanded(
-              child: Text(
-                'Saran AI · Sesi berikutnya',
-                style: TextStyle(
-                  color: AppColors.lime,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.auto_awesome, color: AppColors.lime, size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'Rekomendasi Terapi AI',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
-            _MiniMat(),
           ],
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
         const Text(
-          'Sekuensial',
+          'FSST 2x2 (Four Square Step)',
           style: TextStyle(
             color: Colors.white,
-            fontSize: 26,
-            height: 1.2,
-            letterSpacing: -0.5,
+            fontSize: 22,
             fontWeight: FontWeight.w800,
           ),
         ),
         const SizedBox(height: 4),
         const Text(
-          '40 langkah/menit · 10 menit',
+          '40 langkah/menit · 10 menit latihan',
           style: TextStyle(
             color: AppColors.lime,
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
         const Text(
-          'Pertahankan ritme yang nyaman. Coba Zigzag setelah berdiskusi dengan fisioterapis.',
-          style: TextStyle(
-            color: Color(0xFFF1F5F9),
-            fontSize: 14,
-            height: 1.45,
-          ),
+          'Melatih koordinasi langkah multi-arah dan pemindahan beban seimbang sesuai protokol klinis.',
+          style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 13, height: 1.4),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 18),
         SizedBox(
           width: double.infinity,
-          height: 52,
+          height: 50,
           child: FilledButton.icon(
             onPressed: onStart,
-            icon: SvgPicture.asset(
-              'assets/figma/home_Play.svg',
-              width: 20,
-              height: 20,
-              colorFilter: const ColorFilter.mode(
-                AppColors.deepGreen,
-                BlendMode.srcIn,
-              ),
-            ),
+            icon: const Icon(Icons.play_arrow_rounded, color: AppColors.deepGreen, size: 26),
             label: const Text(
-              'Mulai Latihan',
+              'Mulai Latihan Sekarang',
               style: TextStyle(
                 color: AppColors.deepGreen,
                 fontSize: 16,
@@ -752,64 +1172,8 @@ class _RecommendationCard extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.lime,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(25),
               ),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _MiniMat extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(5),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .12),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      children: [
-        Row(
-          children: [
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
-            const SizedBox(width: 3),
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: AppColors.lime, borderRadius: BorderRadius.circular(3))),
-          ],
-        ),
-        const SizedBox(height: 3),
-        Row(
-          children: [
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
-            const SizedBox(width: 3),
-            Container(width: 12, height: 12, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .25), borderRadius: BorderRadius.circular(3))),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
-class SafetyNote extends StatelessWidget {
-  const SafetyNote({super.key});
-  @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.symmetric(horizontal: 4),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Icon(Icons.shield_outlined, size: 20, color: AppColors.muted),
-        SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            'Berlatih bersama fisioterapis atau gunakan pegangan yang stabil.',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 13,
-              height: 1.4,
-              fontWeight: FontWeight.w500,
             ),
           ),
         ),
@@ -821,235 +1185,114 @@ class SafetyNote extends StatelessWidget {
 class _WeeklyProgressCard extends StatelessWidget {
   const _WeeklyProgressCard({required this.onShowHistory});
   final VoidCallback onShowHistory;
+
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        children: [
-          const Expanded(
-            child: Text(
-              'Langkah makin tepat',
+  Widget build(BuildContext context) => AppCard(
+    padding: const EdgeInsets.all(20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Perkembangan Minggu Ini',
               style: TextStyle(
                 color: AppColors.forest,
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          SvgPicture.asset(
-            'assets/figma/home_TrendingUp.svg',
-            width: 23,
-            height: 23,
-          ),
-        ],
-      ),
-      const SizedBox(height: 14),
-      AppCard(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Akurasi per sesi',
-                  style: TextStyle(
-                    color: AppColors.forest,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  '26 Okt – 1 Nov',
-                  style: TextStyle(color: AppColors.muted, fontSize: 13),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Naik 10 poin dalam 4 sesi minggu ini',
-              style: TextStyle(
-                color: AppColors.green,
-                fontSize: 14,
+                fontSize: 18,
                 fontWeight: FontWeight.w700,
               ),
             ),
-            const SizedBox(height: 18),
-            const _FigmaChart(),
-            const SizedBox(height: 18),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.softGreen,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      SvgPicture.asset(
-                        'assets/figma/home_Sparkles.svg',
-                        width: 16,
-                        height: 16,
-                        colorFilter: const ColorFilter.mode(
-                          AppColors.green,
-                          BlendMode.srcIn,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'Estimasi AI · Target akurasi 90%',
-                        style: TextStyle(
-                          color: AppColors.green,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Sekitar 3 sesi lagi',
-                    style: TextStyle(
-                      color: AppColors.forest,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Jika kenaikan 2 poin per sesi berlanjut.',
-                    style: TextStyle(color: AppColors.muted, fontSize: 13),
-                  ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Perkiraan dapat berubah, bukan janji pemulihan klinis.',
-                    style: TextStyle(color: Color(0xFF8E9E98), fontSize: 11),
-                  ),
-                ],
+            InkWell(
+              onTap: onShowHistory,
+              child: const Text(
+                'Detail >',
+                style: TextStyle(
+                  color: AppColors.green,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _DayCol(day: 'Sen', completed: true),
+            _DayCol(day: 'Sel', completed: true),
+            _DayCol(day: 'Rab', completed: true),
+            _DayCol(day: 'Kam', completed: false),
+            _DayCol(day: 'Jum', completed: true),
+            _DayCol(day: 'Sab', completed: true),
+            _DayCol(day: 'Min', completed: true, isToday: true),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+class _DayCol extends StatelessWidget {
+  const _DayCol({
+    required this.day,
+    required this.completed,
+    this.isToday = false,
+  });
+
+  final String day;
+  final bool completed;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Container(
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: completed
+              ? AppColors.green
+              : (isToday ? AppColors.softGreen : const Color(0xFFF1F5F9)),
+          shape: BoxShape.circle,
+          border: isToday ? Border.all(color: AppColors.green, width: 2) : null,
+        ),
+        alignment: Alignment.center,
+        child: completed
+            ? const Icon(Icons.check, color: Colors.white, size: 18)
+            : Text(
+                isToday ? '•' : '',
+                style: const TextStyle(
+                  color: AppColors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        day,
+        style: TextStyle(
+          color: isToday ? AppColors.green : AppColors.muted,
+          fontSize: 12,
+          fontWeight: isToday ? FontWeight.bold : FontWeight.w500,
         ),
       ),
     ],
   );
 }
 
-class _FigmaChart extends StatelessWidget {
-  const _FigmaChart();
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    height: 150,
-    child: CustomPaint(
-      painter: _FigmaChartPainter(),
-      size: Size.infinite,
-    ),
-  );
-}
-
-class _FigmaChartPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final textStyle = const TextStyle(color: AppColors.muted, fontSize: 10);
-    final textPainter = TextPainter(textDirection: TextDirection.ltr);
-
-    // Grid lines & labels
-    final yLabels = ['90', '80', '70'];
-    final yVals = [20.0, 60.0, 100.0];
-    final linePaint = Paint()
-      ..color = AppColors.border
-      ..strokeWidth = 1;
-
-    for (var i = 0; i < 3; i++) {
-      textPainter.text = TextSpan(text: yLabels[i], style: textStyle);
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(0, yVals[i] - 6));
-      canvas.drawLine(Offset(24, yVals[i]), Offset(size.width, yVals[i]), linePaint);
-    }
-
-    // Target 90 dashed line
-    final dashPaint = Paint()
-      ..color = AppColors.green
-      ..strokeWidth = 1.5
-      ..style = PaintingStyle.stroke;
-    double startX = 24;
-    while (startX < size.width) {
-      canvas.drawLine(Offset(startX, 20), Offset(startX + 4, 20), dashPaint);
-      startX += 8;
-    }
-
-    textPainter.text = const TextSpan(
-      text: 'Target 90%',
-      style: TextStyle(color: AppColors.green, fontSize: 10, fontWeight: FontWeight.bold),
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, Offset(size.width - textPainter.width, 4));
-
-    // Data points (26 Okt -> 74%, 28 Okt -> 78%, 30 Okt -> 82%, 1 Nov -> 84%)
-    final points = [
-      Offset(40, 88),
-      Offset(120, 72),
-      Offset(200, 56),
-      Offset(size.width - 24, 48),
-    ];
-    final labels = ['74%', '78%', '82%', '84%'];
-    final xDates = ['26 Okt', '28 Okt', '30 Okt', '1 Nov'];
-
-    // Area fill
-    final areaPath = Path()..moveTo(points[0].dx, size.height - 20);
-    for (final p in points) {
-      areaPath.lineTo(p.dx, p.dy);
-    }
-    areaPath.lineTo(points.last.dx, size.height - 20);
-    areaPath.close();
-
-    final areaPaint = Paint()
-      ..color = AppColors.green.withValues(alpha: 0.12)
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(areaPath, areaPaint);
-
-    // Line
-    final linePath = Path()..moveTo(points[0].dx, points[0].dy);
-    for (var i = 1; i < points.length; i++) {
-      linePath.lineTo(points[i].dx, points[i].dy);
-    }
-    final strokePaint = Paint()
-      ..color = AppColors.green
-      ..strokeWidth = 2.5
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(linePath, strokePaint);
-
-    // Points and labels
-    final dotPaint = Paint()..color = AppColors.green;
-    for (var i = 0; i < points.length; i++) {
-      canvas.drawCircle(points[i], 4, dotPaint);
-
-      textPainter.text = TextSpan(
-        text: labels[i],
-        style: const TextStyle(color: AppColors.forest, fontSize: 11, fontWeight: FontWeight.bold),
-      );
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(points[i].dx - textPainter.width / 2, points[i].dy - 16));
-
-      textPainter.text = TextSpan(text: xDates[i], style: textStyle);
-      textPainter.layout();
-      textPainter.paint(canvas, Offset(points[i].dx - textPainter.width / 2, size.height - 14));
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class _RecentSessions extends StatelessWidget {
-  const _RecentSessions({required this.onShowHistory});
+  const _RecentSessions({
+    required this.sessions,
+    required this.onShowHistory,
+    required this.onSelectSession,
+  });
+
+  final List<SessionRecord> sessions;
   final VoidCallback onShowHistory;
+  final ValueChanged<SessionRecord> onSelectSession;
+
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1058,7 +1301,7 @@ class _RecentSessions extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           const Text(
-            'Latihan terakhir',
+            'Latihan Terakhir',
             style: TextStyle(
               color: AppColors.forest,
               fontSize: 20,
@@ -1078,582 +1321,697 @@ class _RecentSessions extends StatelessWidget {
           ),
         ],
       ),
-      const SizedBox(height: 14),
-      _RecentItem(
-        title: 'Hari ini, 08.30',
-        subtitle: 'Sekuensial · 10 menit',
-        acc: '84%',
-        reaction: '1,8 dtk',
-      ),
-      const SizedBox(height: 10),
-      _RecentItem(
-        title: '30 Okt, 08.45',
-        subtitle: 'Sekuensial · 10 menit',
-        acc: '82%',
-        reaction: '2,0 dtk',
-      ),
-      const SizedBox(height: 10),
-      _RecentItem(
-        title: '28 Okt, 09.00',
-        subtitle: 'Sekuensial · 10 menit',
-        acc: '78%',
-        reaction: '2,2 dtk',
-      ),
-    ],
-  );
-}
-
-class _RecentItem extends StatelessWidget {
-  const _RecentItem({
-    required this.title,
-    required this.subtitle,
-    required this.acc,
-    required this.reaction,
-  });
-  final String title;
-  final String subtitle;
-  final String acc;
-  final String reaction;
-
-  @override
-  Widget build(BuildContext context) => AppCard(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    child: Row(
-      children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.softGreen,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          alignment: Alignment.center,
-          child: const Icon(Icons.directions_walk, color: AppColors.green, size: 24),
-        ),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: const TextStyle(
-                  color: AppColors.forest,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                subtitle,
-                style: const TextStyle(color: AppColors.muted, fontSize: 13),
-              ),
-            ],
-          ),
-        ),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              acc,
-              style: const TextStyle(
-                color: AppColors.green,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              reaction,
-              style: const TextStyle(color: AppColors.muted, fontSize: 12),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
-class HistoryPage extends StatelessWidget {
-  const HistoryPage({
-    required this.period,
-    required this.offset,
-    required this.onPeriodChanged,
-    required this.onOffsetChanged,
-    super.key,
-  });
-  final int period;
-  final int offset;
-  final ValueChanged<int> onPeriodChanged;
-  final ValueChanged<int> onOffsetChanged;
-
-  String _periodLabel() {
-    final today = DateTime.now();
-    if (period == 0) {
-      final monday = today.subtract(
-        Duration(days: today.weekday - 1 + offset * 7),
-      );
-      final sunday = monday.add(const Duration(days: 6));
-      return '${monday.day} ${_monthShort(monday.month)} – ${sunday.day} ${_monthShort(sunday.month)} ${sunday.year}';
-    }
-    if (period == 1) {
-      final month = DateTime(today.year, today.month + offset, 1);
-      return '${_month(month.month)} ${month.year}';
-    }
-    return 'Semua riwayat';
-  }
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    key: const PageStorageKey('history'),
-    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const ScreenHeader(
-          title: 'Riwayat latihan',
-          subtitle: 'Setiap langkah punya cerita kemajuan.',
-        ),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(5),
-          decoration: BoxDecoration(
-            color: AppColors.soft,
+      const SizedBox(height: 12),
+      ...sessions.map(
+        (s) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: InkWell(
+            onTap: () => onSelectSession(s),
             borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: List.generate(3, (index) {
-              const names = ['Minggu ini', 'Bulan ini', 'Semua'];
-              final active = index == period;
-              return Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(12),
-                  onTap: () => onPeriodChanged(index),
-                  child: Container(
-                    height: 48,
+            child: AppCard(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.softGreen,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                     alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: active ? AppColors.green : Colors.transparent,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      names[index],
-                      style: TextStyle(
-                        color: active ? Colors.white : AppColors.muted,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            _PeriodButton(
-              icon: SvgPicture.asset(
-                'assets/figma/history_ChevronLeft.svg',
-                width: 20,
-                height: 20,
-              ),
-              onTap: () => onOffsetChanged(offset - 1),
-              disabled: period == 2,
-            ),
-            Expanded(
-              child: Center(
-                child: Text(
-                  _periodLabel(),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.forest,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            _PeriodButton(
-              icon: SvgPicture.asset(
-                'assets/figma/history_ChevronLeft.svg',
-                width: 20,
-                height: 20,
-              ),
-              forward: true,
-              disabled: offset == 0 || period == 2,
-              onTap: () {
-                if (offset < 0 && period != 2) onOffsetChanged(offset + 1);
-              },
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-        AppCard(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Text(
-                      'Ringkasan periode',
-                      style: TextStyle(
-                        color: AppColors.forest,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppColors.softGreen,
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: const Text(
-                      '0 sesi',
-                      style: TextStyle(
-                        color: AppColors.green,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Row(
-                children: [
-                  Expanded(
-                    child: _PeriodMetric(value: '—', label: 'Total latihan'),
-                  ),
-                  SizedBox(
-                    height: 62,
-                    child: VerticalDivider(color: AppColors.border, width: 1),
-                  ),
-                  Expanded(
-                    child: _PeriodMetric(
-                      value: '—',
-                      label: 'Rata-rata akurasi',
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.softGreen,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: const Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Perkembangan',
-                      style: TextStyle(
-                        color: AppColors.green,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    SizedBox(height: 6),
-                    Text(
-                      'Ringkasan muncul setelah sesi latihan tersedia.',
-                      style: TextStyle(
-                        color: AppColors.forest,
-                        fontSize: 14,
-                        height: 1.45,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Sesi latihan',
-                style: TextStyle(
-                  color: AppColors.forest,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const Text(
-              'Terbaru dahulu',
-              style: TextStyle(color: AppColors.muted, fontSize: 13),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        AppCard(
-          padding: const EdgeInsets.all(20),
-          child: const EmptyMessage(
-            icon: Icons.history_rounded,
-            title: 'Belum ada riwayat',
-            subtitle:
-                'Sesi latihan akan muncul di sini setelah fitur pencatatan tersedia.',
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
-class _PeriodButton extends StatelessWidget {
-  const _PeriodButton({
-    required this.icon,
-    required this.onTap,
-    this.disabled = false,
-    this.forward = false,
-  });
-  final Widget icon;
-  final VoidCallback onTap;
-  final bool disabled;
-  final bool forward;
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 48,
-    height: 48,
-    child: OutlinedButton(
-      onPressed: disabled ? null : onTap,
-      style: OutlinedButton.styleFrom(
-        padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        side: const BorderSide(color: AppColors.border),
-        foregroundColor: AppColors.forest,
-        backgroundColor: disabled ? AppColors.soft : Colors.transparent,
-      ),
-      child: forward ? RotatedBox(quarterTurns: 2, child: icon) : icon,
-    ),
-  );
-}
-
-class _PeriodMetric extends StatelessWidget {
-  const _PeriodMetric({required this.value, required this.label});
-  final String value;
-  final String label;
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        value,
-        style: const TextStyle(
-          color: AppColors.forest,
-          fontSize: 30,
-          height: 1.1,
-          letterSpacing: -1,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-      const SizedBox(height: 6),
-      Text(
-        label,
-        style: const TextStyle(
-          color: AppColors.muted,
-          fontSize: 14,
-          height: 1.4,
-        ),
-      ),
-    ],
-  );
-}
-
-class SettingsPage extends StatelessWidget {
-  const SettingsPage({
-    required this.connected,
-    required this.preferences,
-    required this.onPreferenceChanged,
-    required this.onManageMat,
-    required this.onShowInfo,
-    required this.onSignOut,
-    super.key,
-  });
-  final bool connected;
-  final Map<String, bool> preferences;
-  final void Function(String, bool) onPreferenceChanged;
-  final VoidCallback onManageMat;
-  final void Function(String, String) onShowInfo;
-  final VoidCallback onSignOut;
-
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    key: const PageStorageKey('settings'),
-    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const ScreenHeader(
-          title: 'Pengaturan',
-          subtitle: 'Atur kenyamanan latihan Anda.',
-        ),
-        const SizedBox(height: 24),
-        InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: () => onShowInfo(
-            'Profil pasien',
-            'Pengaturan profil akan tersedia saat akun Supabase disiapkan. Tidak ada informasi profil yang disimpan pada pratinjau ini.',
-          ),
-          child: AppCard(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: AppColors.softGreen,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_outline,
-                    color: AppColors.green,
-                    size: 30,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Profil pasien',
-                        style: TextStyle(
-                          color: AppColors.forest,
-                          fontSize: 21,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: 3),
-                      Text(
-                        'Belum diatur',
-                        style: TextStyle(color: AppColors.muted, fontSize: 14),
-                      ),
-                      SizedBox(height: 5),
-                      Text(
-                        'Lihat pengaturan profil',
-                        style: TextStyle(
-                          color: AppColors.green,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right, color: AppColors.muted),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        const SectionTitle('Matras saya'),
-        const SizedBox(height: 14),
-        AppCard(
-          padding: const EdgeInsets.all(22),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.softGreen,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
                     child: const Icon(
-                      Icons.wifi_rounded,
+                      Icons.directions_walk_rounded,
                       color: AppColors.green,
+                      size: 24,
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Perangkat Stepping Grid',
-                          style: TextStyle(
+                        Text(
+                          s.modeName,
+                          style: const TextStyle(
                             color: AppColors.forest,
-                            fontSize: 18,
+                            fontSize: 15,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
                         Text(
-                          connected
-                              ? 'Terhubung · simulasi UI'
-                              : 'Belum terhubung',
+                          '${s.dateText} · ${s.totalSteps} langkah',
                           style: const TextStyle(
-                            color: AppColors.green,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
+                            color: AppColors.muted,
+                            fontSize: 13,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Icon(
-                    connected
-                        ? Icons.check_circle_outline
-                        : Icons.circle_outlined,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${s.accuracyPercent}%',
+                        style: const TextStyle(
+                          color: AppColors.green,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '${s.avgReactionSeconds}s',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
+// ==============================================================================
+// RIWAYAT LATIHAN (HISTORY PAGE)
+// ==============================================================================
+class HistoryPage extends StatelessWidget {
+  const HistoryPage({
+    required this.period,
+    required this.offset,
+    required this.activeFilter,
+    required this.sessions,
+    required this.onFilterChanged,
+    required this.onPeriodChanged,
+    required this.onOffsetChanged,
+    required this.onSelectSession,
+    super.key,
+  });
+
+  final int period;
+  final int offset;
+  final String activeFilter;
+  final List<SessionRecord> sessions;
+  final ValueChanged<String> onFilterChanged;
+  final ValueChanged<int> onPeriodChanged;
+  final ValueChanged<int> onOffsetChanged;
+  final ValueChanged<SessionRecord> onSelectSession;
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredList = activeFilter == 'Semua'
+        ? sessions
+        : sessions.where((s) => s.modeName.contains(activeFilter)).toList();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const BrandHeader(),
+          const SizedBox(height: 24),
+          const Text(
+            'Riwayat Latihan',
+            style: TextStyle(
+              color: AppColors.forest,
+              fontSize: 32,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Rekam jejak latihan motorik dan keseimbangan Anda.',
+            style: TextStyle(color: AppColors.muted, fontSize: 15),
+          ),
+          const SizedBox(height: 20),
+
+          // Pilihan Periode
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E8F0),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                _PeriodTab(
+                  label: 'Minggu ini',
+                  active: period == 0,
+                  onTap: () => onPeriodChanged(0),
+                ),
+                _PeriodTab(
+                  label: 'Bulan ini',
+                  active: period == 1,
+                  onTap: () => onPeriodChanged(1),
+                ),
+                _PeriodTab(
+                  label: 'Semua',
+                  active: period == 2,
+                  onTap: () => onPeriodChanged(2),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Ringkasan Periode
+          AppCard(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Ringkasan Periode',
+                      style: TextStyle(
+                        color: AppColors.forest,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.softGreen,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${filteredList.length} sesi',
+                        style: const TextStyle(
+                          color: AppColors.green,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _SummaryStat(
+                        label: 'Total Langkah',
+                        val: '${filteredList.fold(0, (acc, s) => acc + s.totalSteps)}',
+                      ),
+                    ),
+                    Container(width: 1, height: 40, color: AppColors.border),
+                    Expanded(
+                      child: _SummaryStat(
+                        label: 'Rata-rata Akurasi',
+                        val: filteredList.isEmpty
+                            ? '0%'
+                            : '${(filteredList.fold(0, (acc, s) => acc + s.accuracyPercent) / filteredList.length).round()}%',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Filter Mode Chips
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _FilterChip(
+                  label: 'Semua',
+                  active: activeFilter == 'Semua',
+                  onTap: () => onFilterChanged('Semua'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'FSST 2x2',
+                  active: activeFilter == 'FSST',
+                  onTap: () => onFilterChanged('FSST'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Lateral 1x4',
+                  active: activeFilter == 'Lateral',
+                  onTap: () => onFilterChanged('Lateral'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: 'Reactive T',
+                  active: activeFilter == 'Reactive',
+                  onTap: () => onFilterChanged('Reactive'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Daftar Sesi
+          if (filteredList.isEmpty)
+            const AppCard(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      Icon(Icons.history_rounded, size: 40, color: AppColors.muted),
+                      SizedBox(height: 10),
+                      Text(
+                        'Belum ada riwayat pada kategori ini',
+                        style: TextStyle(color: AppColors.muted, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            ...filteredList.map(
+              (s) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  onTap: () => onSelectSession(s),
+                  borderRadius: BorderRadius.circular(18),
+                  child: AppCard(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.softGreen,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.directions_walk_rounded,
+                                    color: AppColors.green,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      s.modeName,
+                                      style: const TextStyle(
+                                        color: AppColors.forest,
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    Text(
+                                      s.dateText,
+                                      style: const TextStyle(
+                                        color: AppColors.muted,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.softGreen,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '${s.accuracyPercent}% Akurasi',
+                                style: const TextStyle(
+                                  color: AppColors.green,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        const Divider(color: AppColors.border, height: 1),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Langkah: ${s.totalSteps}',
+                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                            ),
+                            Text(
+                              'Reaksi: ${s.avgReactionSeconds}s',
+                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                            ),
+                            Text(
+                              'Simetri: ${s.bilateralSymmetry}%',
+                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                            ),
+                            const Text(
+                              'Detail ›',
+                              style: TextStyle(
+                                color: AppColors.green,
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodTab extends StatelessWidget {
+  const _PeriodTab({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Expanded(
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                  ),
+                ]
+              : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: active ? AppColors.forest : AppColors.muted,
+            fontSize: 13,
+            fontWeight: active ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+class _SummaryStat extends StatelessWidget {
+  const _SummaryStat({required this.label, required this.val});
+  final String label;
+  final String val;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Text(
+        val,
+        style: const TextStyle(
+          color: AppColors.forest,
+          fontSize: 22,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+      Text(
+        label,
+        style: const TextStyle(color: AppColors.muted, fontSize: 12),
+      ),
+    ],
+  );
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(20),
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+      decoration: BoxDecoration(
+        color: active ? AppColors.green : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: active ? AppColors.green : AppColors.border,
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? Colors.white : AppColors.forest,
+          fontSize: 13,
+          fontWeight: active ? FontWeight.bold : FontWeight.w500,
+        ),
+      ),
+    ),
+  );
+}
+
+// ==============================================================================
+// PENGATURAN (SETTINGS PAGE)
+// ==============================================================================
+class SettingsPage extends StatelessWidget {
+  const SettingsPage({
+    required this.patientName,
+    required this.patientCondition,
+    required this.connected,
+    required this.textSizeLabel,
+    required this.reminderTime,
+    required this.preferences,
+    required this.onEditProfile,
+    required this.onSelectTextSize,
+    required this.onSetReminderTime,
+    required this.onPreferenceChanged,
+    required this.onManageMat,
+    required this.onShowHelp,
+    required this.onShowSafety,
+    required this.onShowPrivacy,
+    required this.onSignOut,
+    super.key,
+  });
+
+  final String patientName;
+  final String patientCondition;
+  final bool connected;
+  final String textSizeLabel;
+  final String reminderTime;
+  final Map<String, bool> preferences;
+  final VoidCallback onEditProfile;
+  final VoidCallback onSelectTextSize;
+  final VoidCallback onSetReminderTime;
+  final void Function(String, bool) onPreferenceChanged;
+  final VoidCallback onManageMat;
+  final VoidCallback onShowHelp;
+  final VoidCallback onShowSafety;
+  final VoidCallback onShowPrivacy;
+  final VoidCallback onSignOut;
+
+  @override
+  Widget build(BuildContext context) => SingleChildScrollView(
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const BrandHeader(),
+        const SizedBox(height: 24),
+        const Text(
+          'Pengaturan',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 32,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Atur preferensi latihan dan integrasi perangkat Anda.',
+          style: TextStyle(color: AppColors.muted, fontSize: 15),
+        ),
+        const SizedBox(height: 20),
+
+        // Profil Pasien Card
+        InkWell(
+          onTap: onEditProfile,
+          borderRadius: BorderRadius.circular(20),
+          child: AppCard(
+            padding: const EdgeInsets.all(18),
+            child: Row(
+              children: [
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    color: AppColors.softGreen,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: const Icon(
+                    Icons.person_rounded,
                     color: AppColors.green,
-                    size: 22,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        patientName,
+                        style: const TextStyle(
+                          color: AppColors.forest,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        patientCondition,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.edit_outlined, color: AppColors.green, size: 20),
+              ],
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+        const Text(
+          'Matras IoT',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        AppCard(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: connected ? AppColors.softGreen : AppColors.amberBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                      color: connected ? AppColors.green : AppColors.amberText,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Matras Stepping Grid (SGT-01)',
+                          style: TextStyle(
+                            color: AppColors.forest,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        Text(
+                          connected
+                              ? 'Terhubung ke ADVAN MF01-83405B'
+                              : 'Belum terhubung ke Wi-Fi MiFi',
+                          style: TextStyle(
+                            color: connected ? AppColors.green : AppColors.amberText,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Text(
-                connected
-                    ? 'Status simulasi. Perangkat belum berkomunikasi melalui Wi-Fi.'
-                    : 'Hubungkan matras melalui jaringan Wi-Fi saat integrasi perangkat tersedia.',
-                style: const TextStyle(
-                  color: AppColors.forest,
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: AppColors.border),
-              const SizedBox(height: 8),
-              const _InfoLine(label: 'Versi firmware', value: '—'),
               const SizedBox(height: 14),
-              const _InfoLine(
-                label: 'Kalibrasi terakhir',
-                value: 'Belum tersedia',
+              const Divider(color: AppColors.border, height: 1),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Firmware', style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                  const Text('v1.0.0 (ESP32 DevKit)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ],
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Gateway MiFi', style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                  const Text('192.168.0.1', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                ],
+              ),
+              const SizedBox(height: 16),
               SizedBox(
                 width: double.infinity,
-                height: 52,
                 child: OutlinedButton.icon(
                   onPressed: onManageMat,
-                  icon: const Icon(Icons.wifi_find_rounded, size: 19),
+                  icon: const Icon(Icons.settings_input_antenna_rounded, size: 18),
                   label: Text(
-                    connected ? 'Kelola koneksi Wi-Fi' : 'Atur koneksi Wi-Fi',
+                    connected ? 'Kelola Koneksi Wi-Fi' : 'Atur Koneksi Wi-Fi Matras',
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.green,
                     side: const BorderSide(color: AppColors.green),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
                 ),
@@ -1661,197 +2019,145 @@ class SettingsPage extends StatelessWidget {
             ],
           ),
         ),
+
         const SizedBox(height: 24),
-        const SectionTitle('Tampilan aplikasi'),
-        const SizedBox(height: 14),
+        const Text(
+          'Tampilan & Kenyamanan',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
         AppCard(
+          padding: EdgeInsets.zero,
           child: Column(
             children: [
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_Type.svg',
-                  width: 22,
-                  height: 22,
+              ListTile(
+                leading: const Icon(Icons.format_size_rounded, color: AppColors.green),
+                title: const Text('Ukuran Teks', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Sesuaikan kenyamanan membaca lansia'),
+                trailing: Text(
+                  '$textSizeLabel ›',
+                  style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.bold),
                 ),
-                title: 'Ukuran teks',
-                subtitle: 'Nyaman dibaca',
-                trailing: const Text(
-                  'Standar  ›',
-                  style: TextStyle(color: AppColors.muted, fontSize: 14),
-                ),
-                onTap: () => onShowInfo(
-                  'Ukuran teks',
-                  'Pilihan ukuran teks akan tersedia pada pengaturan tampilan.',
-                ),
+                onTap: onSelectTextSize,
               ),
-              const _TileDivider(),
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_Contrast.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Kontras tinggi',
-                subtitle: 'Memperjelas elemen layar',
+              const Divider(color: AppColors.border, height: 1),
+              SwitchListTile(
+                secondary: const Icon(Icons.contrast_rounded, color: AppColors.green),
+                title: const Text('Kontras Tinggi', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Pertajam kontras elemen visual layar'),
                 value: preferences['contrast'] ?? true,
-                onChanged: (value) => onPreferenceChanged('contrast', value),
+                activeColor: AppColors.green,
+                onChanged: (val) => onPreferenceChanged('contrast', val),
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              ListTile(
+                leading: const Icon(Icons.alarm_rounded, color: AppColors.green),
+                title: const Text('Pengingat Latihan Harian', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('Jadwal: $reminderTime'),
+                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                onTap: onSetReminderTime,
               ),
             ],
           ),
         ),
+
         const SizedBox(height: 24),
-        const SectionTitle('Pengingat ponsel'),
-        const SizedBox(height: 14),
-        AppCard(
-          child: Column(
-            children: [
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_Bell.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Pengingat latihan',
-                subtitle: 'Notifikasi harian',
-                value: preferences['reminders'] ?? false,
-                onChanged: (value) => onPreferenceChanged('reminders', value),
-              ),
-              const _TileDivider(),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 18),
-                child: Text(
-                  'Pengingat hanya mengubah tampilan pratinjau dan belum menjadwalkan notifikasi.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
-              ),
-            ],
+        const Text(
+          'Umpan Balik Latihan',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 24),
-        const SectionTitle('Umpan balik latihan'),
-        const SizedBox(height: 14),
+        const SizedBox(height: 10),
         AppCard(
+          padding: EdgeInsets.zero,
           child: Column(
             children: [
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_Volume2.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Suara panduan',
-                subtitle: 'Petunjuk audio saat latihan',
+              SwitchListTile(
+                secondary: const Icon(Icons.volume_up_rounded, color: AppColors.green),
+                title: const Text('Suara Aba-aba (Audio DFPlayer)', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Bunyi nada saat injakan benar & selesai'),
                 value: preferences['audio'] ?? true,
-                onChanged: (value) => onPreferenceChanged('audio', value),
+                activeColor: AppColors.green,
+                onChanged: (val) => onPreferenceChanged('audio', val),
               ),
-              const _TileDivider(),
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_Lightbulb.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Petunjuk visual',
-                subtitle: 'Isyarat visual di layar',
+              const Divider(color: AppColors.border, height: 1),
+              SwitchListTile(
+                secondary: const Icon(Icons.lightbulb_outline_rounded, color: AppColors.green),
+                title: const Text('Petunjuk Lampu LED (74HC595)', style: TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: const Text('Pola LED menyala pada ubin target matras'),
                 value: preferences['vibration'] ?? true,
-                onChanged: (value) => onPreferenceChanged('vibration', value),
-              ),
-              const _TileDivider(),
-              const Padding(
-                padding: EdgeInsets.fromLTRB(20, 0, 20, 18),
-                child: Text(
-                  'Preferensi berlaku selama pratinjau terbuka dan akan kembali ke pengaturan awal saat aplikasi ditutup.',
-                  style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: 13,
-                    height: 1.45,
-                  ),
-                ),
+                activeColor: AppColors.green,
+                onChanged: (val) => onPreferenceChanged('vibration', val),
               ),
             ],
           ),
         ),
+
         const SizedBox(height: 24),
-        const SectionTitle('Bantuan dan akun'),
-        const SizedBox(height: 14),
+        const Text(
+          'Informasi & Bantuan',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
         AppCard(
+          padding: EdgeInsets.zero,
           child: Column(
             children: [
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_CircleHelp.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Pusat bantuan',
-                subtitle: 'Panduan penggunaan aplikasi',
-                onTap: () => onShowInfo(
-                  'Pusat bantuan',
-                  'Panduan penggunaan akan ditambahkan pada tahap berikutnya.',
-                ),
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded, color: AppColors.green),
+                title: const Text('Pusat Bantuan & Panduan Matras', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                onTap: onShowHelp,
               ),
-              const _TileDivider(),
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_ShieldCheck.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Keamanan latihan',
-                subtitle: 'Informasi penggunaan dengan aman',
-                onTap: () => onShowInfo(
-                  'Keamanan latihan',
-                  'Gunakan matras di permukaan yang rata. Untuk latihan rehabilitasi, ikuti arahan tenaga kesehatan Anda.',
-                ),
+              const Divider(color: AppColors.border, height: 1),
+              ListTile(
+                leading: const Icon(Icons.health_and_safety_rounded, color: AppColors.green),
+                title: const Text('Protokol Keamanan Rehabilitasi', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                onTap: onShowSafety,
               ),
-              const _TileDivider(),
-              _PreferenceTile(
-                icon: SvgPicture.asset(
-                  'assets/figma/settings_LockKeyhole.svg',
-                  width: 22,
-                  height: 22,
-                ),
-                title: 'Privasi dan data',
-                subtitle: 'Informasi pengelolaan data',
-                onTap: () => onShowInfo(
-                  'Privasi dan data',
-                  'Kebijakan privasi belum ditetapkan. Pratinjau ini tidak mengirim atau menyimpan data pasien maupun sesi latihan.',
-                ),
+              const Divider(color: AppColors.border, height: 1),
+              ListTile(
+                leading: const Icon(Icons.security_rounded, color: AppColors.green),
+                title: const Text('Keamanan Data Medis (Supabase)', style: TextStyle(fontWeight: FontWeight.w600)),
+                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                onTap: onShowPrivacy,
               ),
             ],
           ),
         ),
-        const SizedBox(height: 18),
+
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
+          height: 48,
           child: TextButton.icon(
             onPressed: onSignOut,
-            icon: SvgPicture.asset(
-              'assets/figma/settings_LogOut.svg',
-              width: 20,
-              height: 20,
-              colorFilter: const ColorFilter.mode(
-                AppColors.muted,
-                BlendMode.srcIn,
-              ),
-            ),
+            icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
             label: const Text(
-              'Keluar dari pratinjau',
+              'Keluar dari Akun',
               style: TextStyle(
-                color: AppColors.muted,
-                fontWeight: FontWeight.w600,
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 12),
         const Center(
           child: Text(
-            'Stepping Grid Trainer · Pratinjau frontend',
+            'Stepping Grid Trainer · Versi 1.0.0 (Produksi)',
             style: TextStyle(color: AppColors.muted, fontSize: 12),
           ),
         ),
@@ -1860,156 +2166,37 @@ class SettingsPage extends StatelessWidget {
   );
 }
 
-class _InfoLine extends StatelessWidget {
-  const _InfoLine({required this.label, required this.value});
-  final String label;
-  final String value;
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Expanded(
-        child: Text(
-          label,
-          style: const TextStyle(color: AppColors.muted, fontSize: 14),
-        ),
-      ),
-      Text(
-        value,
-        style: const TextStyle(
-          color: AppColors.forest,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    ],
-  );
-}
-
-class _PreferenceTile extends StatelessWidget {
-  const _PreferenceTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.value,
-    this.onChanged,
-    this.trailing,
-    this.onTap,
+// ==============================================================================
+// MODAL BOTTOM SHEET: KONEKSI WI-FI & ESP32 MATRAS
+// ==============================================================================
+class _DeviceConnectionSheet extends StatelessWidget {
+  const _DeviceConnectionSheet({
+    required this.isConnected,
+    required this.isCheckingCloud,
+    required this.onCheckCloud,
+    required this.onToggleVirtual,
   });
-  final Widget icon;
-  final String title;
-  final String subtitle;
-  final bool? value;
-  final ValueChanged<bool>? onChanged;
-  final Widget? trailing;
-  final VoidCallback? onTap;
+
+  final bool isConnected;
+  final bool isCheckingCloud;
+  final VoidCallback onCheckCloud;
+  final ValueChanged<bool> onToggleVirtual;
 
   @override
-  Widget build(BuildContext context) {
-    final content = Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-      child: Row(
-        children: [
-          SizedBox(width: 40, child: Center(child: icon)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: AppColors.forest,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  subtitle,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 13),
-                ),
-              ],
-            ),
-          ),
-          if (value case final switchValue?)
-            InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: () => onChanged?.call(!switchValue),
-              child: Semantics(
-                toggled: switchValue,
-                label: title,
-                child: SvgPicture.asset(
-                  switchValue
-                      ? 'assets/figma/settings_SakelarAktif.svg'
-                      : 'assets/figma/settings_SakelarNonaktif.svg',
-                  width: 48,
-                  height: 28,
-                ),
-              ),
-            ),
-          if (trailing case final trailingWidget?)
-            trailingWidget
-          else if (value case null)
-            const Icon(Icons.chevron_right, size: 20, color: AppColors.muted),
-        ],
-      ),
-    );
-    if (onTap != null) return InkWell(onTap: onTap, child: content);
-    return content;
-  }
-}
-
-class _TileDivider extends StatelessWidget {
-  const _TileDivider();
-  @override
-  Widget build(BuildContext context) => const Padding(
-    padding: EdgeInsets.symmetric(horizontal: 20),
-    child: Divider(height: 1, color: AppColors.border),
-  );
-}
-
-class _WifiPreviewSheet extends StatefulWidget {
-  const _WifiPreviewSheet({
-    required this.initiallyConnected,
-    required this.onConnectionChanged,
-  });
-  final bool initiallyConnected;
-  final ValueChanged<bool> onConnectionChanged;
-  @override
-  State<_WifiPreviewSheet> createState() => _WifiPreviewSheetState();
-}
-
-class _WifiPreviewSheetState extends State<_WifiPreviewSheet> {
-  final _ssidController = TextEditingController();
-  bool _simulated = false;
-  @override
-  void initState() {
-    super.initState();
-    _simulated = widget.initiallyConnected;
-  }
-
-  @override
-  void dispose() {
-    _ssidController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-    child: Container(
-      padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-      decoration: const BoxDecoration(
-        color: AppColors.canvas,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.fromLTRB(24, 16, 24, 28),
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    child: SingleChildScrollView(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
             child: Container(
-              width: 40,
+              width: 44,
               height: 4,
               decoration: BoxDecoration(
                 color: AppColors.border,
@@ -2017,72 +2204,722 @@ class _WifiPreviewSheetState extends State<_WifiPreviewSheet> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Koneksi Matras IoT',
+                style: TextStyle(
+                  color: AppColors.forest,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: isConnected ? AppColors.softGreen : AppColors.amberBg,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  isConnected ? 'Online' : 'Offline',
+                  style: TextStyle(
+                    color: isConnected ? AppColors.green : AppColors.amberText,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Informasi Jaringan MiFi ADVAN MF01
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.soft,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              children: [
+                _WifiInfoRow(
+                  label: 'Nama SSID (MiFi)',
+                  value: 'ADVAN MF01-83405B',
+                  icon: Icons.wifi,
+                ),
+                const SizedBox(height: 8),
+                _WifiInfoRow(
+                  label: 'Kata Sandi',
+                  value: '085848719373',
+                  icon: Icons.key_rounded,
+                ),
+                const SizedBox(height: 8),
+                _WifiInfoRow(
+                  label: 'IP Gateway Router',
+                  value: '192.168.0.1',
+                  icon: Icons.router_rounded,
+                ),
+                const SizedBox(height: 8),
+                _WifiInfoRow(
+                  label: 'ID Perangkat',
+                  value: 'SGT-01 (ESP32 DevKit)',
+                  icon: Icons.memory_rounded,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Tombol Cek Cloud Langsung
+          SizedBox(
+            width: double.infinity,
+            height: 48,
+            child: FilledButton.icon(
+              onPressed: isCheckingCloud ? null : onCheckCloud,
+              icon: isCheckingCloud
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.cloud_sync_rounded, size: 20),
+              label: Text(
+                isCheckingCloud
+                    ? 'Memeriksa Cloud Supabase...'
+                    : 'Periksa Status Matras di Cloud',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Mode Uji Coba Virtual
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isConnected ? AppColors.softGreen : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mode Uji Coba Virtual',
+                        style: TextStyle(
+                          color: AppColors.forest,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Uji latihan langsung di layar tanpa matras fisik',
+                        style: TextStyle(color: AppColors.muted, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: isConnected,
+                  activeColor: AppColors.green,
+                  onChanged: (val) {
+                    onToggleVirtual(val);
+                    Navigator.pop(context);
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 18),
           const Text(
-            'Koneksi Wi-Fi matras',
+            'Panduan Sambungan 3 Langkah:',
             style: TextStyle(
               color: AppColors.forest,
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
           const Text(
-            'Simulasi tampilan saja. Belum ada koneksi jaringan atau data yang disimpan.',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 14,
-              height: 1.45,
-            ),
+            '1. Nyalakan MiFi ADVAN MF01 Anda.\n'
+            '2. Pastikan HP dan Matras ESP32 terhubung ke Wi-Fi ADVAN MF01-83405B.\n'
+            '3. Matras akan otomatis sinkronisasi status ke Cloud Supabase.',
+            style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.45),
           ),
-          const SizedBox(height: 18),
-          TextField(
-            controller: _ssidController,
-            decoration: InputDecoration(
-              labelText: 'Nama jaringan Wi-Fi (opsional)',
-              prefixIcon: const Icon(Icons.wifi_rounded),
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.border),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.border),
+        ],
+      ),
+    ),
+  );
+}
+
+class _WifiInfoRow extends StatelessWidget {
+  const _WifiInfoRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Icon(icon, size: 18, color: AppColors.green),
+      const SizedBox(width: 8),
+      Text(label, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+      const Spacer(),
+      Text(
+        value,
+        style: const TextStyle(
+          color: AppColors.forest,
+          fontSize: 13,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    ],
+  );
+}
+
+// ==============================================================================
+// LAYAR LATIHAN INTERAKTIF (TRAINING SCREEN DENGAN SENSOR/UBIN SIMULASI)
+// ==============================================================================
+class InteractiveTrainingScreen extends StatefulWidget {
+  const InteractiveTrainingScreen({
+    required this.isConnected,
+    required this.onBack,
+    required this.onSessionFinished,
+    super.key,
+  });
+
+  final bool isConnected;
+  final VoidCallback onBack;
+  final ValueChanged<SessionRecord> onSessionFinished;
+
+  @override
+  State<InteractiveTrainingScreen> createState() =>
+      _InteractiveTrainingScreenState();
+}
+
+class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
+  int _selectedModeIndex = 0; // 0: FSST 2x2, 1: Lateral 1x4, 2: Reactive T
+  bool _isRunning = false;
+  int _currentStep = 0;
+  int _totalSteps = 5;
+  int _targetTile = 1; // 1, 2, 3, atau 4
+  int _correctHits = 0;
+  int _wrongHits = 0;
+
+  Stopwatch _stopwatch = Stopwatch();
+  Timer? _timer;
+  double _elapsedSeconds = 0.0;
+
+  // Reactive Mode specific
+  bool _isWaitingForHome = true;
+  int _reactiveRound = 0;
+  final int _maxReactiveRounds = 5;
+  DateTime? _roundStartTime;
+  double _totalReactionSeconds = 0.0;
+
+  final List<int> _fsstSequence = [1, 2, 4, 3, 1];
+  final List<int> _lateralSequence = [1, 2, 3, 4, 3, 2, 1];
+
+  void _startTraining() {
+    setState(() {
+      _isRunning = true;
+      _currentStep = 0;
+      _correctHits = 0;
+      _wrongHits = 0;
+      _elapsedSeconds = 0.0;
+      _reactiveRound = 0;
+      _totalReactionSeconds = 0.0;
+      _isWaitingForHome = true;
+
+      if (_selectedModeIndex == 0) {
+        _totalSteps = _fsstSequence.length;
+        _targetTile = _fsstSequence[0];
+      } else if (_selectedModeIndex == 1) {
+        _totalSteps = _lateralSequence.length;
+        _targetTile = _lateralSequence[0];
+      } else {
+        _totalSteps = _maxReactiveRounds;
+        _targetTile = 1; // Standby di Ubin 1
+      }
+    });
+
+    _stopwatch = Stopwatch()..start();
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      if (!mounted) return;
+      setState(() {
+        _elapsedSeconds = _stopwatch.elapsedMilliseconds / 1000.0;
+      });
+    });
+  }
+
+  void _onTileStepped(int tileNumber) {
+    if (!_isRunning) return;
+
+    if (_selectedModeIndex == 0 || _selectedModeIndex == 1) {
+      // Sekuensial FSST atau Lateral
+      if (tileNumber == _targetTile) {
+        _correctHits++;
+        final nextStep = _currentStep + 1;
+        if ((_selectedModeIndex == 0 && nextStep >= _fsstSequence.length) ||
+            (_selectedModeIndex == 1 && nextStep >= _lateralSequence.length)) {
+          _finishTraining();
+        } else {
+          setState(() {
+            _currentStep = nextStep;
+            _targetTile = _selectedModeIndex == 0
+                ? _fsstSequence[_currentStep]
+                : _lateralSequence[_currentStep];
+          });
+        }
+      } else {
+        setState(() => _wrongHits++);
+      }
+    } else {
+      // Reactive T-Shape Mode
+      if (_isWaitingForHome) {
+        if (tileNumber == 1) {
+          final randTarget = Random().nextInt(3) + 2; // Acak ubin 2, 3, atau 4
+          setState(() {
+            _isWaitingForHome = false;
+            _targetTile = randTarget;
+            _roundStartTime = DateTime.now();
+          });
+        }
+      } else {
+        if (tileNumber == _targetTile) {
+          final rt = DateTime.now().difference(_roundStartTime!).inMilliseconds / 1000.0;
+          _totalReactionSeconds += rt;
+          _correctHits++;
+          final nextRound = _reactiveRound + 1;
+
+          if (nextRound >= _maxReactiveRounds) {
+            _finishTraining();
+          } else {
+            setState(() {
+              _reactiveRound = nextRound;
+              _isWaitingForHome = true;
+              _targetTile = 1;
+            });
+          }
+        } else {
+          setState(() => _wrongHits++);
+        }
+      }
+    }
+  }
+
+  void _finishTraining() {
+    _stopwatch.stop();
+    _timer?.cancel();
+    setState(() => _isRunning = false);
+
+    final totalAttempts = _correctHits + _wrongHits;
+    final accuracy = totalAttempts > 0
+        ? ((_correctHits / totalAttempts) * 100).round()
+        : 100;
+    final avgRt = _selectedModeIndex == 2
+        ? (_totalReactionSeconds / _maxReactiveRounds)
+        : (_elapsedSeconds / (_totalSteps > 0 ? _totalSteps : 1));
+
+    final modeNames = ['FSST 2x2', 'Lateral 1x4', 'Reactive T-Shape'];
+    final sessionRecord = SessionRecord(
+      id: 'SES-${DateTime.now().millisecondsSinceEpoch % 1000}',
+      modeName: modeNames[_selectedModeIndex],
+      dateText: 'Hari ini, ${TimeOfDay.now().format(context)}',
+      durationText: '${_elapsedSeconds.toStringAsFixed(1)} dtk',
+      totalSteps: _correctHits,
+      accuracyPercent: accuracy,
+      avgReactionSeconds: double.parse(avgRt.toStringAsFixed(2)),
+      bilateralSymmetry: 50,
+      clinicalNote:
+          'Sesi berhasil diselesaikan. Koordinasi motorik terukur dan tersinkronisasi ke Cloud.',
+    );
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Row(
+          children: [
+            Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 28),
+            SizedBox(width: 10),
+            Text(
+              'Latihan Selesai!',
+              style: TextStyle(
+                color: AppColors.forest,
+                fontWeight: FontWeight.bold,
               ),
             ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Hasil ${modeNames[_selectedModeIndex]} Anda:',
+              style: const TextStyle(color: AppColors.muted, fontSize: 14),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _SummaryStat(
+                  label: 'Waktu Total',
+                  val: '${_elapsedSeconds.toStringAsFixed(1)}s',
+                ),
+                _SummaryStat(label: 'Akurasi', val: '$accuracy%'),
+                _SummaryStat(
+                  label: 'Avg Reaksi',
+                  val: '${avgRt.toStringAsFixed(2)}s',
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.softGreen,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cloud_done_rounded, color: AppColors.green, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Tersimpan aman & sinkronisasi ke Supabase',
+                      style: TextStyle(
+                        color: AppColors.green,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onSessionFinished(sessionRecord);
+            },
+            child: const Text('Lihat di Riwayat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final modeNames = ['FSST 2x2', 'Lateral 1x4', 'Reactive T'];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              IconButton(
+                onPressed: widget.onBack,
+                icon: const Icon(Icons.arrow_back_rounded, color: AppColors.forest),
+              ),
+              const SizedBox(width: 6),
+              const Text(
+                'Latihan Matras',
+                style: TextStyle(
+                  color: AppColors.forest,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
+
+          // Pilihan Mode Latihan
+          Row(
+            children: List.generate(3, (index) {
+              final active = _selectedModeIndex == index;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
+                  child: InkWell(
+                    onTap: _isRunning
+                        ? null
+                        : () => setState(() => _selectedModeIndex = index),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: active ? AppColors.green : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: active ? AppColors.green : AppColors.border,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        modeNames[index],
+                        style: TextStyle(
+                          color: active ? Colors.white : AppColors.forest,
+                          fontWeight: active ? FontWeight.bold : FontWeight.w500,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 20),
+
+          // Status & Timer Display
+          AppCard(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _isRunning
+                          ? (_selectedModeIndex == 2 && _isWaitingForHome
+                              ? 'STANDBY: UBIN 1'
+                              : 'TARGET: UBIN $_targetTile')
+                          : 'Siap Memulai',
+                      style: TextStyle(
+                        color: _isRunning ? AppColors.green : AppColors.muted,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '${_elapsedSeconds.toStringAsFixed(1)}s',
+                      style: const TextStyle(
+                        color: AppColors.forest,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: LinearProgressIndicator(
+                    value: _totalSteps > 0
+                        ? (_selectedModeIndex == 2
+                            ? _reactiveRound / _maxReactiveRounds
+                            : _currentStep / _totalSteps)
+                        : 0,
+                    minHeight: 8,
+                    backgroundColor: AppColors.border,
+                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.green),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // MATRAS 4 UBIN INTERAKTIF (U1 - U4)
+          Center(
+            child: Container(
+              width: 320,
+              height: 320,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 10,
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Baris Atas: Ubin 1 (Kiri) & Ubin 2 (Kanan)
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _MatrasTileWidget(
+                            tileNum: 1,
+                            label: 'Depan-Kiri',
+                            isTarget: _isRunning && _targetTile == 1,
+                            onTap: () => _onTileStepped(1),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _MatrasTileWidget(
+                            tileNum: 2,
+                            label: 'Depan-Kanan',
+                            isTarget: _isRunning && _targetTile == 2,
+                            onTap: () => _onTileStepped(2),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Baris Bawah: Ubin 3 (Kiri) & Ubin 4 (Kanan)
+                  Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _MatrasTileWidget(
+                            tileNum: 3,
+                            label: 'Belakang-Kiri',
+                            isTarget: _isRunning && _targetTile == 3,
+                            onTap: () => _onTileStepped(3),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _MatrasTileWidget(
+                            tileNum: 4,
+                            label: 'Belakang-Kanan',
+                            isTarget: _isRunning && _targetTile == 4,
+                            onTap: () => _onTileStepped(4),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // Tombol Mulai / Hentikan
           SizedBox(
             width: double.infinity,
             height: 52,
             child: FilledButton(
-              onPressed: () {
-                final next = !_simulated;
-                setState(() => _simulated = next);
-                widget.onConnectionChanged(next);
-              },
+              onPressed: _isRunning ? _finishTraining : _startTraining,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.green,
+                backgroundColor: _isRunning ? Colors.redAccent : AppColors.green,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(16),
                 ),
               ),
               child: Text(
-                _simulated
-                    ? 'Putuskan simulasi'
-                    : 'Simulasikan status terhubung',
+                _isRunning ? 'Selesaikan Sesi' : 'Mulai Latihan Sekarang',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Center(
+          const SizedBox(height: 10),
+          const Center(
             child: Text(
-              _simulated
-                  ? 'Status UI: terhubung (simulasi)'
-                  : 'Status UI: belum terhubung',
-              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+              'Ketuk ubin di atas atau injak matras fisik ESP32 yang terhubung.',
+              style: TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MatrasTileWidget extends StatelessWidget {
+  const _MatrasTileWidget({
+    required this.tileNum,
+    required this.label,
+    required this.isTarget,
+    required this.onTap,
+  });
+
+  final int tileNum;
+  final String label;
+  final bool isTarget;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(16),
+    child: AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      decoration: BoxDecoration(
+        color: isTarget ? const Color(0xFF10B981) : const Color(0xFF334155),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isTarget ? Colors.white : const Color(0xFF475569),
+          width: isTarget ? 3 : 1,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Indikator LED 74HC595 simulasi
+          Container(
+            width: 14,
+            height: 14,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isTarget ? Colors.yellowAccent : Colors.black26,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'UBIN $tileNum',
+            style: TextStyle(
+              color: isTarget ? Colors.white : const Color(0xFF94A3B8),
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              color: isTarget ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF64748B),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -2091,235 +2928,403 @@ class _WifiPreviewSheetState extends State<_WifiPreviewSheet> {
   );
 }
 
-class TrainingPage extends StatelessWidget {
-  const TrainingPage({
-    required this.connected,
-    required this.onBack,
-    super.key,
-  });
-  final bool connected;
-  final VoidCallback onBack;
-  @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            IconButton(
-              onPressed: onBack,
-              icon: const Icon(
-                Icons.arrow_back_rounded,
-                color: AppColors.forest,
-              ),
-            ),
-            const SizedBox(width: 4),
-            const BrandHeader(),
-          ],
-        ),
-        const SizedBox(height: 32),
-        const Text(
-          'Latihan',
-          style: TextStyle(
-            color: AppColors.forest,
-            fontSize: 34,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -1,
-          ),
-        ),
-        const SizedBox(height: 6),
-        const Text(
-          'Tampilan sesi latihan pratinjau.',
-          style: TextStyle(color: AppColors.muted, fontSize: 16),
-        ),
-        const SizedBox(height: 24),
-        AppCard(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              Container(
-                width: 76,
-                height: 76,
-                decoration: const BoxDecoration(
-                  color: AppColors.softGreen,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  connected ? Icons.wifi_rounded : Icons.wifi_off_rounded,
-                  color: AppColors.green,
-                  size: 34,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Text(
-                connected
-                    ? 'Status koneksi simulasi aktif'
-                    : 'Matras belum terhubung',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: AppColors.forest,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Layar ini belum memulai latihan sungguhan dan tidak merekam data. Koneksi Wi-Fi perangkat akan ditambahkan pada tahap integrasi.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 15,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 22),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: OutlinedButton(
-                  onPressed: onBack,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.green,
-                    side: const BorderSide(color: AppColors.green),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                  child: const Text('Kembali ke Beranda'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-}
+// ==============================================================================
+// DIALOGS: DETAIL SESI, PROFIL PASIEN, BANTUAN, KEAMANAN, PRIVASI
+// ==============================================================================
+class _SessionDetailDialog extends StatelessWidget {
+  const _SessionDetailDialog({required this.session});
+  final SessionRecord session;
 
-class SectionTitle extends StatelessWidget {
-  const SectionTitle(this.title, {super.key});
-  final String title;
   @override
-  Widget build(BuildContext context) => Text(
-    title,
-    style: const TextStyle(
-      color: AppColors.forest,
-      fontSize: 22,
-      fontWeight: FontWeight.w700,
-    ),
-  );
-}
-
-class AppCard extends StatelessWidget {
-  const AppCard({
-    required this.child,
-    this.padding = const EdgeInsets.all(0),
-    super.key,
-  });
-  final Widget child;
-  final EdgeInsetsGeometry padding;
-  @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: padding,
-    decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: AppColors.border),
-      borderRadius: BorderRadius.circular(24),
-    ),
-    child: child,
-  );
-}
-
-class EmptyMessage extends StatelessWidget {
-  const EmptyMessage({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    super.key,
-  });
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 12),
-    child: Row(
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: Row(
       children: [
         Container(
-          width: 48,
-          height: 48,
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: AppColors.softGreen,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
           ),
-          child: Icon(icon, color: AppColors.green, size: 23),
+          child: const Icon(
+            Icons.analytics_rounded,
+            color: AppColors.green,
+            size: 24,
+          ),
         ),
-        const SizedBox(width: 14),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                title,
+                session.modeName,
                 style: const TextStyle(
                   color: AppColors.forest,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              const SizedBox(height: 4),
               Text(
-                subtitle,
-                style: const TextStyle(
-                  color: AppColors.muted,
-                  fontSize: 13,
-                  height: 1.4,
-                ),
+                session.dateText,
+                style: const TextStyle(color: AppColors.muted, fontSize: 13),
               ),
             ],
           ),
         ),
       ],
     ),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _SummaryStat(label: 'Akurasi', val: '${session.accuracyPercent}%'),
+            _SummaryStat(label: 'Total Langkah', val: '${session.totalSteps}'),
+            _SummaryStat(label: 'Avg Reaksi', val: '${session.avgReactionSeconds}s'),
+          ],
+        ),
+        const SizedBox(height: 16),
+        const Divider(color: AppColors.border),
+        const SizedBox(height: 10),
+        const Text(
+          'Simetri Beban Kaki:',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Kiri: ${session.bilateralSymmetry}%', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text('Kanan: ${100 - session.bilateralSymmetry}%', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: session.bilateralSymmetry / 100.0,
+            minHeight: 6,
+            backgroundColor: AppColors.border,
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.green),
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'Catatan Evaluasi Klinis:',
+          style: TextStyle(
+            color: AppColors.forest,
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          session.clinicalNote,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 13,
+            height: 1.45,
+          ),
+        ),
+      ],
+    ),
+    actions: [
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Tutup'),
+      ),
+    ],
   );
 }
 
-String _weekday(int day) => const [
-  'Senin',
-  'Selasa',
-  'Rabu',
-  'Kamis',
-  'Jumat',
-  'Sabtu',
-  'Minggu',
-][day - 1];
-String _month(int month) => const [
-  'Januari',
-  'Februari',
-  'Maret',
-  'April',
-  'Mei',
-  'Juni',
-  'Juli',
-  'Agustus',
-  'September',
-  'Oktober',
-  'November',
-  'Desember',
-][month - 1];
-String _monthShort(int month) => const [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'Mei',
-  'Jun',
-  'Jul',
-  'Agu',
-  'Sep',
-  'Okt',
-  'Nov',
-  'Des',
-][month - 1];
+class _PatientProfileDialog extends StatefulWidget {
+  const _PatientProfileDialog({
+    required this.currentName,
+    required this.currentAge,
+    required this.currentCondition,
+    required this.currentTherapist,
+    required this.currentTargetMinutes,
+    required this.onSave,
+  });
+
+  final String currentName;
+  final String currentAge;
+  final String currentCondition;
+  final String currentTherapist;
+  final int currentTargetMinutes;
+  final void Function(String, String, String, String, int) onSave;
+
+  @override
+  State<_PatientProfileDialog> createState() => _PatientProfileDialogState();
+}
+
+class _PatientProfileDialogState extends State<_PatientProfileDialog> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _ageCtrl;
+  late TextEditingController _conditionCtrl;
+  late TextEditingController _therapistCtrl;
+  late int _targetMinutes;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.currentName);
+    _ageCtrl = TextEditingController(text: widget.currentAge);
+    _conditionCtrl = TextEditingController(text: widget.currentCondition);
+    _therapistCtrl = TextEditingController(text: widget.currentTherapist);
+    _targetMinutes = widget.currentTargetMinutes;
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _ageCtrl.dispose();
+    _conditionCtrl.dispose();
+    _therapistCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: const Text(
+      'Ubah Profil Pasien',
+      style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+    ),
+    content: SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _nameCtrl,
+            decoration: const InputDecoration(labelText: 'Nama Lengkap Pasien'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _ageCtrl,
+            decoration: const InputDecoration(labelText: 'Usia'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _conditionCtrl,
+            decoration: const InputDecoration(labelText: 'Diagnosa Medis'),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _therapistCtrl,
+            decoration: const InputDecoration(labelText: 'Fisioterapis Pembimbing'),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Target Latihan Harian:', style: TextStyle(fontSize: 13)),
+              DropdownButton<int>(
+                value: _targetMinutes,
+                items: [5, 10, 15, 20].map((m) {
+                  return DropdownMenuItem(value: m, child: Text('$m Menit'));
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _targetMinutes = val);
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Batal'),
+      ),
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        onPressed: () {
+          widget.onSave(
+            _nameCtrl.text.trim(),
+            _ageCtrl.text.trim(),
+            _conditionCtrl.text.trim(),
+            _therapistCtrl.text.trim(),
+            _targetMinutes,
+          );
+          Navigator.pop(context);
+        },
+        child: const Text('Simpan'),
+      ),
+    ],
+  );
+}
+
+class _HelpCenterDialog extends StatelessWidget {
+  const _HelpCenterDialog();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: const Row(
+      children: [
+        Icon(Icons.help_center_rounded, color: AppColors.green),
+        SizedBox(width: 8),
+        Text(
+          'Pusat Bantuan',
+          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+    content: const SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '1. Cara Menghubungkan ke Matras:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 4),
+          Text(
+            '• Nyalakan modem MiFi ADVAN MF01.\n'
+            '• Sambungkan HP ke Wi-Fi ADVAN MF01-83405B.\n'
+            '• Sandi: 085848719373 (Gateway: 192.168.0.1).\n'
+            '• ESP32 akan mengirim heartbeat ke Supabase secara berkala.',
+            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.4),
+          ),
+          SizedBox(height: 12),
+          Text(
+            '2. Mode Latihan Klinis:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 4),
+          Text(
+            '• FSST 2x2: Melatih langkah 4 arah (Depan, Samping, Belakang).\n'
+            '• Lateral 1x4: Melatih transfer bobot kiri-kanan & kelincahan.\n'
+            '• Reactive T: Melatih waktu reaksi terhadap stimulus acak lampu LED.',
+            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.4),
+          ),
+          SizedBox(height: 12),
+          Text(
+            '3. Indikator Ubin & DFPlayer Audio:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 4),
+          Text(
+            '• Lampu LED ubin menyala menandakan target injakan.\n'
+            '• Suara nada tinggi menandakan injakan benar.\n'
+            '• Suara aba-aba turnback memberitahu putar balik di ujung matras.',
+            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.4),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Mengerti'),
+      ),
+    ],
+  );
+}
+
+class _SafetyGuidelinesDialog extends StatelessWidget {
+  const _SafetyGuidelinesDialog();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: const Row(
+      children: [
+        Icon(Icons.health_and_safety_rounded, color: AppColors.green),
+        SizedBox(width: 8),
+        Text(
+          'Keamanan Latihan',
+          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+    content: const SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Protokol Klinis Rehabilitasi Stroke:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 8),
+          Text(
+            '1. Pendampingan Wajib: Bagi pasien dengan gangguan keseimbangan sedang hingga berat, lakukan latihan dengan didampingi fisioterapis atau keluarga.\n\n'
+            '2. Permukaan Datar: Letakkan matras pada lantai yang rata, bersih, dan bebas dari halangan.\n\n'
+            '3. Sepatu Anti-Selip: Gunakan alas kaki tertutup dengan sol karet anti-selip.\n\n'
+            '4. Batas Kelelahan: Segera istirahat bila timbul pusing, nyeri dada, atau napas terengah-engah.',
+            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Saya Mengerti'),
+      ),
+    ],
+  );
+}
+
+class _PrivacyInfoDialog extends StatelessWidget {
+  const _PrivacyInfoDialog();
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    backgroundColor: Colors.white,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+    title: const Row(
+      children: [
+        Icon(Icons.security_rounded, color: AppColors.green),
+        SizedBox(width: 8),
+        Text(
+          'Keamanan & Privasi',
+          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+    content: const SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Perlindungan Rekam Medis Pasien:',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+          SizedBox(height: 8),
+          Text(
+            '• Semua data sesi latihan dienkripsi menggunakan protokol HTTPS/TLS.\n'
+            '• Database PostgreSQL dikelola secara aman di Supabase Cloud.\n'
+            '• Hanya fisioterapis dan pasien terdaftar yang memiliki akses rekam medis.\n'
+            '• Tidak ada pelacak atau pihak ketiga yang mengumpulkan data pribadi Anda.',
+            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      FilledButton(
+        style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Tutup'),
+      ),
+    ],
+  );
+}

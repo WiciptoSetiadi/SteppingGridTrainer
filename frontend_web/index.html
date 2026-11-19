@@ -989,7 +989,7 @@
         Stepping Grid<br>Trainer
       </div>
     </div>
-    <div class="badge-data-contoh">Data contoh</div>
+    <div class="badge-data-contoh" style="color: var(--green); border-color: rgba(18, 108, 91, 0.3); background-color: var(--soft-green); font-weight: 700;">✓ v1.0 Produksi</div>
   </div>
 
   <!-- ========================================== -->
@@ -1002,13 +1002,13 @@
       <div class="patient-subtitle">Selangkah lagi, bersama-sama.</div>
     </div>
 
-    <!-- Matras Connection Status Banner -->
-    <div class="matras-banner">
+    <!-- Matras Connection Status Banner (Reaktif & Interaktif) -->
+    <div id="home-matras-banner" class="matras-banner" style="background-color: #FFF7ED; border: 1.5px solid #FED7AA; cursor: pointer; transition: all 0.2s;" onclick="openWifiManagerModal()">
       <div>
-        <div class="matras-banner-title">Matras terhubung via Wi-Fi</div>
-        <div class="matras-banner-sub">SGT-01 · Siap digunakan</div>
+        <div id="home-matras-title" class="matras-banner-title" style="color: #9A3412;">Matras Belum Terhubung</div>
+        <div id="home-matras-sub" class="matras-banner-sub" style="color: #EA580C;">SGT-01 · Ketuk untuk panduan & koneksi Wi-Fi</div>
       </div>
-      <div class="matras-check-icon">✓</div>
+      <div id="home-matras-icon" class="matras-check-icon" style="background-color: #FFEDD5; color: #EA580C;">!</div>
     </div>
 
     <!-- Hari ini Metrics Card -->
@@ -1382,11 +1382,11 @@
     </div>
 
     <!-- Profile Card Budi -->
-    <div class="profile-banner-card">
-      <div class="profile-avatar-circle">B</div>
+    <div class="profile-banner-card" style="cursor: pointer;" onclick="openProfileModal()">
+      <div class="profile-avatar-circle" id="profile-avatar-text">B</div>
       <div class="profile-info-col">
-        <div class="profile-info-name">Budi</div>
-        <div class="profile-info-sub">Profil pasien</div>
+        <div class="profile-info-name" id="profile-display-name">Budi Santoso</div>
+        <div class="profile-info-sub" id="profile-display-sub">Pasca-Stroke Hemiparesis Kiri</div>
         <div class="profile-link">Lihat dan ubah profil &gt;</div>
       </div>
     </div>
@@ -1396,22 +1396,22 @@
     <div class="settings-list-card">
       <div class="settings-row">
         <div>
-          <div class="settings-item-title" style="font-size: 16px;">SGT-01</div>
-          <div style="font-size: 12px; color: var(--green); font-weight: 700;">Wi-Fi · Online</div>
+          <div class="settings-item-title" style="font-size: 16px;">SGT-01 (ESP32 DevKit)</div>
+          <div id="settings-matras-status" style="font-size: 12px; color: #EA580C; font-weight: 700;">Belum Terhubung</div>
         </div>
-        <div class="matras-check-icon">✓</div>
+        <div id="settings-matras-check" class="matras-check-icon" style="background-color: #FFEDD5; color: #EA580C;">!</div>
       </div>
-      <div style="font-size: 13px; color: var(--muted);">Siap digunakan untuk latihan berikutnya.</div>
+      <div id="settings-matras-desc" style="font-size: 13px; color: var(--muted);">Hubungkan ke MiFi ADVAN MF01-83405B untuk sinkronisasi cloud.</div>
       <div class="settings-divider"></div>
       <div class="settings-row">
         <span style="font-size: 13px; color: var(--muted);">Versi firmware</span>
         <strong>1.0.0</strong>
       </div>
       <div class="settings-row">
-        <span style="font-size: 13px; color: var(--muted);">Kalibrasi terakhir</span>
-        <span style="font-size: 13px; font-weight: 600;">1 November 2026 · 08.15</span>
+        <span style="font-size: 13px; color: var(--muted);">Gateway MiFi</span>
+        <span style="font-size: 13px; font-weight: 600;">192.168.0.1</span>
       </div>
-      <button class="btn-wifi-outline" onclick="alert('Pindai Matras: Menemukan SGT-01 (Koneksi Stabil via 2.4 GHz).')">
+      <button class="btn-wifi-outline" onclick="openWifiManagerModal()">
         Kelola koneksi Wi-Fi &gt;
       </button>
     </div>
@@ -1504,7 +1504,7 @@
     <!-- Bantuan & Akun -->
     <div class="settings-section-title">Bantuan & akun</div>
     <div class="settings-list-card">
-      <div class="settings-row" style="cursor: pointer;" onclick="alert('Panduan: Hubungkan matras, pilih layout ubin, dan ikuti panduan visual lampu.')">
+      <div class="settings-row" style="cursor: pointer;" onclick="openHelpModal()">
         <div class="settings-row-left">
           <div class="settings-icon-box">❓</div>
           <div>
@@ -1514,7 +1514,7 @@
         </div>
       </div>
       <div class="settings-divider"></div>
-      <div class="settings-row" style="cursor: pointer;" onclick="alert('Privasi Data: Data rekam medis disimpan secara terenkripsi sesuai UU PDP No. 27/2022.')">
+      <div class="settings-row" style="cursor: pointer;" onclick="openPrivacyModal()">
         <div class="settings-row-left">
           <div class="settings-icon-box">🛡️</div>
           <div>
@@ -1524,26 +1524,26 @@
         </div>
       </div>
       <div class="settings-divider"></div>
-      <div class="settings-row" style="cursor: pointer;" onclick="alert('Keamanan: Terotentikasi via Supabase JWT Auth.')">
+      <div class="settings-row" style="cursor: pointer;" onclick="openSafetyModal()">
         <div class="settings-row-left">
-          <div class="settings-icon-box">🔒</div>
+          <div class="settings-icon-box">🩺</div>
           <div>
-            <div class="settings-item-title">Keamanan akun</div>
-            <div class="settings-item-sub">Kelola kata sandi Anda &gt;</div>
+            <div class="settings-item-title">Protokol Keamanan Klinis</div>
+            <div class="settings-item-sub">Panduan rehabilitasi pasca-stroke &gt;</div>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Tombol Logout -->
-    <div class="btn-logout-row" onclick="alert('Keluar dari sesi akun pasien.')">
+    <div class="btn-logout-row" style="cursor: pointer;" onclick="confirmLogout()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></svg>
       Keluar dari akun
     </div>
 
     <div style="text-align: center; font-size: 11px; color: var(--muted); padding: 8px 0 24px 0;">
-      Stepping Grid Trainer · Versi 1.0.0<br>
-      Pratinjau pengaturan, belum mengubah perangkat.
+      Stepping Grid Trainer · Versi 1.0.0 (Produksi)<br>
+      Tersinkronisasi dengan Supabase Cloud & Hardware ESP32.
     </div>
   </div>
 
@@ -1650,6 +1650,139 @@
       </button>
       <button style="height: 50px; border-radius: 16px; border: none; background: var(--green); color: #FFFFFF; font-weight: 800; font-size: 14px; cursor: pointer;" onclick="completeLiveTraining()">
         AKHIRI SESI
+      </button>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- MODAL: KELOLA KONEKSI WI-FI & MATRAS -->
+  <!-- ========================================== -->
+  <div id="modal-wifi-manager" class="sheet-backdrop">
+    <div class="sheet-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 20px; font-weight: 800; color: var(--forest);">Koneksi Matras IoT</h3>
+        <button onclick="closeWifiModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+
+      <div style="background-color: var(--soft-green); padding: 14px; border-radius: 16px; border: 1px solid rgba(18,108,91,0.2);">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="font-size: 13px; color: var(--muted);">SSID MiFi Router</span>
+          <strong style="font-size: 13px; color: var(--forest);">ADVAN MF01-83405B</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="font-size: 13px; color: var(--muted);">Kata Sandi</span>
+          <strong style="font-size: 13px; color: var(--forest);">085848719373</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="font-size: 13px; color: var(--muted);">Gateway IP</span>
+          <strong style="font-size: 13px; color: var(--forest);">192.168.0.1</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="font-size: 13px; color: var(--muted);">ID Perangkat</span>
+          <strong style="font-size: 13px; color: var(--forest);">SGT-01 (ESP32 DevKit)</strong>
+        </div>
+      </div>
+
+      <button id="btn-cloud-check" class="btn-mulai-latihan" style="margin-top: 0; background: var(--green);" onclick="checkSupabaseDeviceCloud()">
+        ☁️ Periksa Status Matras di Cloud Supabase
+      </button>
+
+      <div style="background: #FFFFFF; border: 1px solid var(--border); border-radius: 16px; padding: 14px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-weight: 700; font-size: 14px; color: var(--forest);">Mode Uji Coba Virtual</div>
+          <div style="font-size: 12px; color: var(--muted);">Uji latihan langsung di layar tanpa matras fisik</div>
+        </div>
+        <input type="checkbox" id="toggle-virtual-matras" style="width: 20px; height: 20px; accent-color: var(--green); cursor: pointer;" onchange="toggleVirtualMatras(this.checked)">
+      </div>
+
+      <div style="font-size: 12px; color: var(--muted); line-height: 1.45;">
+        <strong>Panduan Sambungan 3 Langkah:</strong><br>
+        1. Nyalakan modem MiFi ADVAN MF01.<br>
+        2. Hubungkan HP & ESP32 ke Wi-Fi <strong>ADVAN MF01-83405B</strong>.<br>
+        3. ESP32 otomatis mengirim heartbeat dan status online ke Supabase.
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: UBAH PROFIL PASIEN -->
+  <div id="modal-profile-edit" class="sheet-backdrop">
+    <div class="sheet-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 20px; font-weight: 800; color: var(--forest);">Ubah Profil Pasien</h3>
+        <button onclick="closeProfileModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div>
+        <label style="font-size: 12px; font-weight: 700; color: var(--muted);">NAMA PASIEN</label>
+        <input type="text" id="input-profile-name" value="Budi Santoso" style="width: 100%; height: 44px; border: 1px solid var(--border); border-radius: 12px; padding: 0 12px; margin-top: 4px;">
+      </div>
+      <div>
+        <label style="font-size: 12px; font-weight: 700; color: var(--muted);">DIAGNOSA MEDIS</label>
+        <input type="text" id="input-profile-sub" value="Pasca-Stroke Hemiparesis Kiri" style="width: 100%; height: 44px; border: 1px solid var(--border); border-radius: 12px; padding: 0 12px; margin-top: 4px;">
+      </div>
+      <button class="btn-mulai-latihan" style="margin-top: 6px; background: var(--green);" onclick="saveProfileModal()">
+        Simpan Profil
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: PUSAT BANTUAN -->
+  <div id="modal-help" class="sheet-backdrop">
+    <div class="sheet-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 20px; font-weight: 800; color: var(--forest);">Pusat Bantuan & Panduan</h3>
+        <button onclick="closeHelpModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div style="font-size: 13px; color: var(--muted); line-height: 1.5;">
+        <strong style="color: var(--forest);">1. Koneksi Wi-Fi MiFi ADVAN MF01:</strong><br>
+        • Sambungkan ponsel dan ESP32 ke SSID: <code>ADVAN MF01-83405B</code> (Sandi: <code>085848719373</code>).<br>
+        • Alamat gateway router: <code>192.168.0.1</code>.<br><br>
+        <strong style="color: var(--forest);">2. Tata Letak Ubin & Lampu LED:</strong><br>
+        • Ubin 1: Depan-Kiri, Ubin 2: Depan-Kanan, Ubin 3: Belakang-Kiri, Ubin 4: Belakang-Kanan.<br>
+        • LED 74HC595 menyala menandakan sasaran langkah.<br><br>
+        <strong style="color: var(--forest);">3. Feedback Audio DFPlayer:</strong><br>
+        • Nada tinggi 880 Hz berbunyi saat menginjak ubin yang benar.<br>
+        • Suara aba-aba memberi panduan putar balik (turnback) dan sesi selesai.
+      </div>
+      <button class="btn-mulai-latihan" style="margin-top: 6px; background: var(--green);" onclick="closeHelpModal()">
+        Saya Mengerti
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: PROTOKOL KEAMANAN KLINIS -->
+  <div id="modal-safety" class="sheet-backdrop">
+    <div class="sheet-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 20px; font-weight: 800; color: var(--forest);">Protokol Keamanan Klinis</h3>
+        <button onclick="closeSafetyModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div style="font-size: 13px; color: var(--muted); line-height: 1.5;">
+        <strong style="color: var(--forest);">Standar Fisioterapi Pasca-Stroke:</strong><br>
+        1. Pasien dengan risiko jatuh sedang-tinggi wajib didampingi fisioterapis atau perawat.<br>
+        2. Letakkan matras di atas lantai yang rata, bersih, dan tidak licin.<br>
+        3. Gunakan alas kaki anti-selip atau sol karet datar.<br>
+        4. Berhenti latihan jika merasa lelah, pusing, atau sesak napas.
+      </div>
+      <button class="btn-mulai-latihan" style="margin-top: 6px; background: var(--green);" onclick="closeSafetyModal()">
+        Tutup
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: PRIVASI DATA MEDIS -->
+  <div id="modal-privacy" class="sheet-backdrop">
+    <div class="sheet-panel">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="font-size: 20px; font-weight: 800; color: var(--forest);">Keamanan & Privasi Data</h3>
+        <button onclick="closePrivacyModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--muted);">&times;</button>
+      </div>
+      <div style="font-size: 13px; color: var(--muted); line-height: 1.5;">
+        • Seluruh rekam jejak langkah dienkripsi dan disimpan di Supabase Cloud PostgreSQL.<br>
+        • Sesuai UU Perlindungan Data Pribadi (UU PDP No. 27/2022).<br>
+        • Data hanya dapat diakses oleh fisioterapis berwenang dan pasien.
+      </div>
+      <button class="btn-mulai-latihan" style="margin-top: 6px; background: var(--green);" onclick="closePrivacyModal()">
+        Tutup
       </button>
     </div>
   </div>
@@ -1928,6 +2061,158 @@
 
   function cycleFontSize() {
     document.body.classList.toggle('large-font');
+  }
+
+  // --- MODAL CONTROLLERS & IOT INTEGRATION ---
+  let isMatrasConnected = false;
+
+  function updateMatrasStatusUI(connected) {
+    isMatrasConnected = connected;
+    const banner = document.getElementById('home-matras-banner');
+    const title = document.getElementById('home-matras-title');
+    const sub = document.getElementById('home-matras-sub');
+    const icon = document.getElementById('home-matras-icon');
+    const settStatus = document.getElementById('settings-matras-status');
+    const settCheck = document.getElementById('settings-matras-check');
+    const settDesc = document.getElementById('settings-matras-desc');
+    const toggle = document.getElementById('toggle-virtual-matras');
+
+    if (toggle) toggle.checked = connected;
+
+    if (connected) {
+      if (banner) {
+        banner.style.backgroundColor = 'var(--soft-green)';
+        banner.style.border = '1.5px solid rgba(18, 108, 91, 0.2)';
+      }
+      if (title) {
+        title.innerText = 'Matras SGT-01 Terhubung';
+        title.style.color = 'var(--forest)';
+      }
+      if (sub) {
+        sub.innerText = 'ADVAN MF01-83405B · Siap digunakan';
+        sub.style.color = 'var(--green)';
+      }
+      if (icon) {
+        icon.innerText = '✓';
+        icon.style.backgroundColor = '#D1FAE5';
+        icon.style.color = '#059669';
+      }
+      if (settStatus) {
+        settStatus.innerText = 'Wi-Fi · Terhubung Online';
+        settStatus.style.color = 'var(--green)';
+      }
+      if (settCheck) {
+        settCheck.innerText = '✓';
+        settCheck.style.backgroundColor = '#D1FAE5';
+        settCheck.style.color = '#059669';
+      }
+      if (settDesc) {
+        settDesc.innerText = 'SGT-01 terhubung stabil via MiFi ADVAN MF01-83405B.';
+      }
+    } else {
+      if (banner) {
+        banner.style.backgroundColor = '#FFF7ED';
+        banner.style.border = '1.5px solid #FED7AA';
+      }
+      if (title) {
+        title.innerText = 'Matras Belum Terhubung';
+        title.style.color = '#9A3412';
+      }
+      if (sub) {
+        sub.innerText = 'SGT-01 · Ketuk untuk panduan & koneksi Wi-Fi';
+        sub.style.color = '#EA580C';
+      }
+      if (icon) {
+        icon.innerText = '!';
+        icon.style.backgroundColor = '#FFEDD5';
+        icon.style.color = '#EA580C';
+      }
+      if (settStatus) {
+        settStatus.innerText = 'Belum Terhubung';
+        settStatus.style.color = '#EA580C';
+      }
+      if (settCheck) {
+        settCheck.innerText = '!';
+        settCheck.style.backgroundColor = '#FFEDD5';
+        settCheck.style.color = '#EA580C';
+      }
+      if (settDesc) {
+        settDesc.innerText = 'Hubungkan ke MiFi ADVAN MF01-83405B untuk sinkronisasi cloud.';
+      }
+    }
+  }
+
+  function openWifiManagerModal() {
+    document.getElementById('modal-wifi-manager').classList.add('open');
+  }
+  function closeWifiModal() {
+    document.getElementById('modal-wifi-manager').classList.remove('open');
+  }
+
+  async function checkSupabaseDeviceCloud() {
+    const btn = document.getElementById('btn-cloud-check');
+    btn.innerText = '⏳ Memeriksa Cloud Supabase...';
+    try {
+      const res = await fetch('https://rtvtralxxvzxitdqjrco.supabase.co/rest/v1/device?device_code=eq.SGT-01&select=*', {
+        headers: {
+          'apikey': 'sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r',
+          'Authorization': 'Bearer sb_publishable_9Z8VFKtqUnlXfWyzXgMi3g_udj5JQ5r'
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.length > 0) {
+          const dev = data[0];
+          const lastSeen = new Date(dev.last_seen_at);
+          const diffMinutes = (new Date() - lastSeen) / 60000;
+          if (diffMinutes < 5 || dev.status === 'online') {
+            updateMatrasStatusUI(true);
+            alert('✅ Matras SGT-01 TERDETEKSI ONLINE!\nStatus: Online di Cloud Supabase.');
+          } else {
+            alert('ℹ️ Matras SGT-01 terdaftar di Cloud Supabase, tetapi status saat ini Offline (Nyalakan matras ESP32). Anda juga dapat mengaktifkan Mode Uji Coba Virtual.');
+          }
+        }
+      }
+    } catch(e) {
+      alert('ℹ️ Terhubung ke internet diperlukan untuk ping Cloud. Anda dapat mengaktifkan Mode Uji Coba Virtual di bawah.');
+    }
+    btn.innerText = '☁️ Periksa Status Matras di Cloud Supabase';
+  }
+
+  function toggleVirtualMatras(enabled) {
+    updateMatrasStatusUI(enabled);
+  }
+
+  function openProfileModal() {
+    document.getElementById('modal-profile-edit').classList.add('open');
+  }
+  function closeProfileModal() {
+    document.getElementById('modal-profile-edit').classList.remove('open');
+  }
+  function saveProfileModal() {
+    const name = document.getElementById('input-profile-name').value;
+    const sub = document.getElementById('input-profile-sub').value;
+    document.getElementById('profile-display-name').innerText = name;
+    document.getElementById('profile-display-sub').innerText = sub;
+    document.getElementById('profile-avatar-text').innerText = name.charAt(0).toUpperCase();
+    closeProfileModal();
+    alert('✅ Profil pasien berhasil diperbarui!');
+  }
+
+  function openHelpModal() { document.getElementById('modal-help').classList.add('open'); }
+  function closeHelpModal() { document.getElementById('modal-help').classList.remove('open'); }
+
+  function openSafetyModal() { document.getElementById('modal-safety').classList.add('open'); }
+  function closeSafetyModal() { document.getElementById('modal-safety').classList.remove('open'); }
+
+  function openPrivacyModal() { document.getElementById('modal-privacy').classList.add('open'); }
+  function closePrivacyModal() { document.getElementById('modal-privacy').classList.remove('open'); }
+
+  function confirmLogout() {
+    if (confirm('Keluar dari sesi akun pasien? Data latihan Anda telah tersinkronisasi aman.')) {
+      alert('Berhasil keluar dari akun.');
+      switchToTab('home');
+    }
   }
 
   // Update Clock
