@@ -156,7 +156,7 @@ class _MainScreenState extends State<MainScreen> {
   String _activeHistoryFilter = 'Semua';
 
   final Map<String, bool> _preferences = {
-    'contrast': true,
+    'contrast': false, // Mode normal standar secara default agar UX enak dan nyaman
     'reminders': false,
     'audio': true,
     'vibration': true,
@@ -695,43 +695,30 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isHC = _preferences['contrast'] ?? true;
-    return MediaQuery(
-      data: MediaQuery.of(context).copyWith(
-        textScaler: TextScaler.linear(_fontScale),
-      ),
-      child: ColorFiltered(
-        colorFilter: isHC
-            ? const ColorFilter.matrix(<double>[
-                1.45, 0, 0, 0, -35,
-                0, 1.45, 0, 0, -35,
-                0, 0, 1.45, 0, -35,
-                0, 0, 0, 1, 0,
-              ])
-            : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
-        child: Scaffold(
-          backgroundColor: isHC ? const Color(0xFF0D1412) : AppColors.canvas,
-          body: SafeArea(
-            bottom: false,
-            child: Column(
-              children: [
-                if (isHC)
-                  Container(
-                    width: double.infinity,
-                    color: const Color(0xFFFFD600),
-                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-                    child: const Center(
-                      child: Text(
-                        '👁️ MODE KONTRAS TINGGI AKTIF (VISUAL DIPERTAJAM)',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontWeight: FontWeight.w900,
-                          fontSize: 11,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
+    final isHC = _preferences['contrast'] ?? false;
+    final scaffold = Scaffold(
+      backgroundColor: isHC ? const Color(0xFF0F172A) : AppColors.canvas,
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            if (isHC)
+              Container(
+                width: double.infinity,
+                color: const Color(0xFFFFD600),
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                child: const Center(
+                  child: Text(
+                    '👁️ MODE KONTRAS TINGGI AKTIF (VISUAL DIPERTAJAM)',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 11,
+                      letterSpacing: 0.5,
                     ),
                   ),
+                ),
+              ),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
@@ -835,8 +822,23 @@ class _MainScreenState extends State<MainScreen> {
                   );
                 },
               ),
-        ),
+      );
+
+    return MediaQuery(
+      data: MediaQuery.of(context).copyWith(
+        textScaler: TextScaler.linear(_fontScale),
       ),
+      child: isHC
+          ? ColorFiltered(
+              colorFilter: const ColorFilter.matrix(<double>[
+                1.35, 0, 0, 0, -25,
+                0, 1.35, 0, 0, -25,
+                0, 0, 1.35, 0, -25,
+                0, 0, 0, 1, 0,
+              ]),
+              child: scaffold,
+            )
+          : scaffold,
     );
   }
 }
@@ -2384,7 +2386,7 @@ class SettingsPage extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: const Text('Pertajam kontras elemen visual layar'),
-                value: preferences['contrast'] ?? true,
+                value: preferences['contrast'] ?? false,
                 activeColor: AppColors.green,
                 onChanged: (val) => onPreferenceChanged('contrast', val),
               ),
