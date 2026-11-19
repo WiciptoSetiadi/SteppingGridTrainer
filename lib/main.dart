@@ -46,17 +46,42 @@ class SessionRecord {
   });
 }
 
-class SteppingGridApp extends StatefulWidget {
+class SteppingGridApp extends StatelessWidget {
   const SteppingGridApp({super.key});
 
   @override
-  State<SteppingGridApp> createState() => _SteppingGridAppState();
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Stepping Grid Trainer',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        scaffoldBackgroundColor: AppColors.canvas,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: AppColors.green,
+        ).copyWith(primary: AppColors.green, surface: AppColors.canvas),
+        fontFamily: 'Inter',
+        textTheme: const TextTheme(
+          bodyLarge: TextStyle(color: AppColors.forest),
+          bodyMedium: TextStyle(color: AppColors.forest),
+        ),
+      ),
+      home: const MainScreen(),
+    );
+  }
 }
 
-class _SteppingGridAppState extends State<SteppingGridApp> {
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
+  @override
+  State<MainScreen> createState() => _MainScreenState();
+}
+
+class _MainScreenState extends State<MainScreen> {
   int _selectedTab = 0;
   bool _showTraining = false;
-  bool _matrasConnected = false; // Matras offline by default until checked or virtual mode enabled
+  bool _matrasConnected = false;
   bool _isCheckingCloud = false;
   double _fontScale = 1.0;
   String _selectedTextSizeLabel = 'Standar';
@@ -161,7 +186,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
                 content: Text(
                   _matrasConnected
                       ? 'Matras SGT-01 terdeteksi Online di Cloud Supabase!'
-                      : 'Matras terdaftar di Cloud, namun sedang offline (nyalakan matras).',
+                      : 'Matras terdaftar di Cloud, namun saat ini sedang offline (Nyalakan matras).',
                 ),
                 backgroundColor:
                     _matrasConnected ? AppColors.green : Colors.orange.shade800,
@@ -178,12 +203,13 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Tidak dapat menghubungi Cloud saat ini. Anda dapat mengaktifkan Mode Uji Coba Virtual.',
+            'Tidak dapat menghubungi Cloud saat ini. Mengaktifkan Mode Matras Virtual.',
           ),
-          backgroundColor: Colors.blueGrey,
+          backgroundColor: AppColors.green,
           duration: Duration(seconds: 3),
         ),
       );
+      setState(() => _matrasConnected = true);
     }
   }
 
@@ -196,14 +222,39 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
         isConnected: _matrasConnected,
         isCheckingCloud: _isCheckingCloud,
         onCheckCloud: _checkSupabaseDeviceStatus,
+        onConnectDirect: () {
+          setState(() => _matrasConnected = true);
+          Navigator.pop(sheetContext);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Matras SGT-01 Berhasil Terhubung ke ADVAN MF01-83405B!',
+              ),
+              backgroundColor: AppColors.green,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        },
+        onDisconnect: () {
+          setState(() => _matrasConnected = false);
+          Navigator.pop(sheetContext);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Koneksi Matras Diputuskan'),
+              backgroundColor: Colors.blueGrey,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        },
         onToggleVirtual: (connected) {
           setState(() => _matrasConnected = connected);
+          Navigator.pop(sheetContext);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
                 connected
-                    ? 'Matras Terhubung (Mode Interaktif Aktif)'
-                    : 'Matras Diputuskan',
+                    ? 'Mode Uji Coba Virtual Aktif (Matras Terhubung)'
+                    : 'Mode Matras Dinonaktifkan',
               ),
               backgroundColor: connected ? AppColors.green : Colors.grey.shade700,
               duration: const Duration(seconds: 2),
@@ -217,14 +268,14 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
   void _showSessionDetail(SessionRecord session) {
     showDialog<void>(
       context: context,
-      builder: (context) => _SessionDetailDialog(session: session),
+      builder: (dialogContext) => _SessionDetailDialog(session: session),
     );
   }
 
   void _openPatientProfileDialog() {
     showDialog<void>(
       context: context,
-      builder: (context) => _PatientProfileDialog(
+      builder: (dialogContext) => _PatientProfileDialog(
         currentName: _patientName,
         currentAge: _patientAge,
         currentCondition: _patientCondition,
@@ -252,7 +303,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
   void _openTextSizeDialog() {
     showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
@@ -277,7 +328,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
                     _fontScale = val;
                     _selectedTextSizeLabel = 'Standar';
                   });
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                 }
               },
             ),
@@ -293,7 +344,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
                     _fontScale = val;
                     _selectedTextSizeLabel = 'Besar';
                   });
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                 }
               },
             ),
@@ -309,7 +360,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
                     _fontScale = val;
                     _selectedTextSizeLabel = 'Sangat Besar';
                   });
-                  Navigator.pop(context);
+                  Navigator.pop(dialogContext);
                 }
               },
             ),
@@ -349,28 +400,28 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
   void _showHelpCenter() {
     showDialog<void>(
       context: context,
-      builder: (context) => const _HelpCenterDialog(),
+      builder: (dialogContext) => const _HelpCenterDialog(),
     );
   }
 
   void _showSafetyGuidelines() {
     showDialog<void>(
       context: context,
-      builder: (context) => const _SafetyGuidelinesDialog(),
+      builder: (dialogContext) => const _SafetyGuidelinesDialog(),
     );
   }
 
   void _showPrivacyInfo() {
     showDialog<void>(
       context: context,
-      builder: (context) => const _PrivacyInfoDialog(),
+      builder: (dialogContext) => const _PrivacyInfoDialog(),
     );
   }
 
   Future<void> _confirmSignOut() async {
     final shouldLeave = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text(
@@ -386,12 +437,12 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Batal'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.green),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Keluar'),
           ),
         ],
@@ -415,7 +466,7 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
     setState(() {
       _sessions.insert(0, newRecord);
       _showTraining = false;
-      _selectedTab = 1; // Beralih ke tab Riwayat untuk melihat hasil
+      _selectedTab = 1; // Beralih langsung ke tab Riwayat
     });
 
     // Kirim secara asinkron ke Supabase Cloud
@@ -464,123 +515,107 @@ class _SteppingGridAppState extends State<SteppingGridApp> {
       data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(_fontScale),
       ),
-      child: MaterialApp(
-        title: 'Stepping Grid Trainer',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          useMaterial3: true,
-          scaffoldBackgroundColor: AppColors.canvas,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: AppColors.green,
-          ).copyWith(primary: AppColors.green, surface: AppColors.canvas),
-          fontFamily: 'Inter',
-          textTheme: const TextTheme(
-            bodyLarge: TextStyle(color: AppColors.forest),
-            bodyMedium: TextStyle(color: AppColors.forest),
-          ),
-        ),
-        home: Scaffold(
-          body: SafeArea(
-            bottom: false,
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 520),
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: constraints.maxHeight,
-                      child: AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 180),
-                        child: _showTraining
-                            ? InteractiveTrainingScreen(
-                                isConnected: _matrasConnected,
-                                onBack: () =>
-                                    setState(() => _showTraining = false),
-                                onSessionFinished: _handleSessionCompleted,
-                              )
-                            : IndexedStack(
-                                key: ValueKey(_selectedTab),
-                                index: _selectedTab,
-                                children: [
-                                  HomePage(
-                                    patientName: _patientName,
-                                    connected: _matrasConnected,
-                                    onManageMat: _openDeviceConnectionSheet,
-                                    onStartTraining: () =>
-                                        setState(() => _showTraining = true),
-                                    onShowHistory: () =>
-                                        setState(() => _selectedTab = 1),
-                                    recentSessions: _sessions.take(3).toList(),
-                                    onSelectSession: _showSessionDetail,
+      child: Scaffold(
+        body: SafeArea(
+          bottom: false,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: constraints.maxHeight,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 180),
+                      child: _showTraining
+                          ? InteractiveTrainingScreen(
+                              isConnected: _matrasConnected,
+                              onBack: () =>
+                                  setState(() => _showTraining = false),
+                              onSessionFinished: _handleSessionCompleted,
+                            )
+                          : IndexedStack(
+                              key: ValueKey(_selectedTab),
+                              index: _selectedTab,
+                              children: [
+                                HomePage(
+                                  patientName: _patientName,
+                                  connected: _matrasConnected,
+                                  onManageMat: _openDeviceConnectionSheet,
+                                  onStartTraining: () =>
+                                      setState(() => _showTraining = true),
+                                  onShowHistory: () =>
+                                      setState(() => _selectedTab = 1),
+                                  recentSessions: _sessions.take(3).toList(),
+                                  onSelectSession: _showSessionDetail,
+                                ),
+                                HistoryPage(
+                                  period: _period,
+                                  offset: _periodOffset,
+                                  activeFilter: _activeHistoryFilter,
+                                  sessions: _sessions,
+                                  onFilterChanged: (filter) => setState(
+                                    () => _activeHistoryFilter = filter,
                                   ),
-                                  HistoryPage(
-                                    period: _period,
-                                    offset: _periodOffset,
-                                    activeFilter: _activeHistoryFilter,
-                                    sessions: _sessions,
-                                    onFilterChanged: (filter) => setState(
-                                      () => _activeHistoryFilter = filter,
-                                    ),
-                                    onPeriodChanged: (value) => setState(() {
-                                      _period = value;
-                                      _periodOffset = 0;
-                                    }),
-                                    onOffsetChanged: (value) =>
-                                        setState(() => _periodOffset = value),
-                                    onSelectSession: _showSessionDetail,
-                                  ),
-                                  SettingsPage(
-                                    patientName: _patientName,
-                                    patientCondition: _patientCondition,
-                                    connected: _matrasConnected,
-                                    textSizeLabel: _selectedTextSizeLabel,
-                                    reminderTime: _reminderTime,
-                                    preferences: _preferences,
-                                    onEditProfile: _openPatientProfileDialog,
-                                    onSelectTextSize: _openTextSizeDialog,
-                                    onSetReminderTime: _openReminderDialog,
-                                    onPreferenceChanged: (key, value) =>
-                                        setState(() => _preferences[key] = value),
-                                    onManageMat: _openDeviceConnectionSheet,
-                                    onShowHelp: _showHelpCenter,
-                                    onShowSafety: _showSafetyGuidelines,
-                                    onShowPrivacy: _showPrivacyInfo,
-                                    onSignOut: _confirmSignOut,
-                                  ),
-                                ],
-                              ),
-                      ),
+                                  onPeriodChanged: (value) => setState(() {
+                                    _period = value;
+                                    _periodOffset = 0;
+                                  }),
+                                  onOffsetChanged: (value) =>
+                                      setState(() => _periodOffset = value),
+                                  onSelectSession: _showSessionDetail,
+                                ),
+                                SettingsPage(
+                                  patientName: _patientName,
+                                  patientCondition: _patientCondition,
+                                  connected: _matrasConnected,
+                                  textSizeLabel: _selectedTextSizeLabel,
+                                  reminderTime: _reminderTime,
+                                  preferences: _preferences,
+                                  onEditProfile: _openPatientProfileDialog,
+                                  onSelectTextSize: _openTextSizeDialog,
+                                  onSetReminderTime: _openReminderDialog,
+                                  onPreferenceChanged: (key, value) =>
+                                      setState(() => _preferences[key] = value),
+                                  onManageMat: _openDeviceConnectionSheet,
+                                  onShowHelp: _showHelpCenter,
+                                  onShowSafety: _showSafetyGuidelines,
+                                  onShowPrivacy: _showPrivacyInfo,
+                                  onSignOut: _confirmSignOut,
+                                ),
+                              ],
+                            ),
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
-          bottomNavigationBar: _showTraining
-              ? null
-              : LayoutBuilder(
-                  builder: (context, _) {
-                    return Align(
-                      heightFactor: 1,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 520),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: SafeArea(
-                            top: false,
-                            child: AppBottomNavigation(
-                              selected: _selectedTab,
-                              onSelected: (index) =>
-                                  setState(() => _selectedTab = index),
-                            ),
+        ),
+        bottomNavigationBar: _showTraining
+            ? null
+            : LayoutBuilder(
+                builder: (context, _) {
+                  return Align(
+                    heightFactor: 1,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: SafeArea(
+                          top: false,
+                          child: AppBottomNavigation(
+                            selected: _selectedTab,
+                            onSelected: (index) =>
+                                setState(() => _selectedTab = index),
                           ),
                         ),
                       ),
-                    );
-                  },
-                ),
-        ),
+                    ),
+                  );
+                },
+              ),
       ),
     );
   }
@@ -831,7 +866,7 @@ class HomePage extends StatelessWidget {
         ),
         const SizedBox(height: 20),
 
-        // BANNER STATUS MATRAS YANG REAKTIF (TIDAK LAGI SALAH TAMPIL)
+        // BANNER STATUS MATRAS YANG REAKTIF (KLIK UNTUK BUKA PANDUAN KONEKSI)
         InkWell(
           onTap: onManageMat,
           borderRadius: BorderRadius.circular(18),
@@ -841,7 +876,9 @@ class HomePage extends StatelessWidget {
               color: connected ? AppColors.softGreen : AppColors.amberBg,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: connected ? AppColors.green.withValues(alpha: 0.3) : AppColors.amberBorder,
+                color: connected
+                    ? AppColors.green.withValues(alpha: 0.3)
+                    : AppColors.amberBorder,
                 width: 1.5,
               ),
             ),
@@ -870,7 +907,9 @@ class HomePage extends StatelessWidget {
                             ? 'Matras SGT-01 Terhubung'
                             : 'Matras Belum Terhubung',
                         style: TextStyle(
-                          color: connected ? AppColors.forest : AppColors.amberText,
+                          color: connected
+                              ? AppColors.forest
+                              : AppColors.amberText,
                           fontSize: 16,
                           fontWeight: FontWeight.w700,
                         ),
@@ -881,7 +920,9 @@ class HomePage extends StatelessWidget {
                             ? 'ADVAN MF01-83405B · Siap digunakan'
                             : 'SGT-01 · Ketuk untuk hubungkan via Wi-Fi',
                         style: TextStyle(
-                          color: connected ? AppColors.muted : const Color(0xFF9A3412),
+                          color: connected
+                              ? AppColors.muted
+                              : const Color(0xFF9A3412),
                           fontSize: 13,
                         ),
                       ),
@@ -889,7 +930,8 @@ class HomePage extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: connected ? AppColors.green : AppColors.amberText,
                     borderRadius: BorderRadius.circular(20),
@@ -907,7 +949,9 @@ class HomePage extends StatelessWidget {
                       ),
                       const SizedBox(width: 2),
                       Icon(
-                        connected ? Icons.check : Icons.arrow_forward_ios_rounded,
+                        connected
+                            ? Icons.check
+                            : Icons.arrow_forward_ios_rounded,
                         color: Colors.white,
                         size: 12,
                       ),
@@ -920,7 +964,11 @@ class HomePage extends StatelessWidget {
         ),
 
         const SizedBox(height: 22),
-        const DailySummaryCard(),
+        InkWell(
+          onTap: onShowHistory,
+          borderRadius: BorderRadius.circular(22),
+          child: const DailySummaryCard(),
+        ),
         const SizedBox(height: 22),
         _RecommendationCard(onStart: onStartTraining),
         const SizedBox(height: 22),
@@ -1160,7 +1208,11 @@ class _RecommendationCard extends StatelessWidget {
           height: 50,
           child: FilledButton.icon(
             onPressed: onStart,
-            icon: const Icon(Icons.play_arrow_rounded, color: AppColors.deepGreen, size: 26),
+            icon: const Icon(
+              Icons.play_arrow_rounded,
+              color: AppColors.deepGreen,
+              size: 26,
+            ),
             label: const Text(
               'Mulai Latihan Sekarang',
               style: TextStyle(
@@ -1219,7 +1271,7 @@ class _WeeklyProgressCard extends StatelessWidget {
         const SizedBox(height: 16),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
+          children: const [
             _DayCol(day: 'Sen', completed: true),
             _DayCol(day: 'Sel', completed: true),
             _DayCol(day: 'Rab', completed: true),
@@ -1391,7 +1443,11 @@ class _RecentSessions extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.chevron_right, color: AppColors.muted, size: 20),
+                  const Icon(
+                    Icons.chevron_right,
+                    color: AppColors.muted,
+                    size: 20,
+                  ),
                 ],
               ),
             ),
@@ -1503,7 +1559,10 @@ class HistoryPage extends StatelessWidget {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: AppColors.softGreen,
                         borderRadius: BorderRadius.circular(20),
@@ -1525,7 +1584,8 @@ class HistoryPage extends StatelessWidget {
                     Expanded(
                       child: _SummaryStat(
                         label: 'Total Langkah',
-                        val: '${filteredList.fold(0, (acc, s) => acc + s.totalSteps)}',
+                        val:
+                            '${filteredList.fold(0, (acc, s) => acc + s.totalSteps)}',
                       ),
                     ),
                     Container(width: 1, height: 40, color: AppColors.border),
@@ -1585,7 +1645,11 @@ class HistoryPage extends StatelessWidget {
                   padding: EdgeInsets.all(24),
                   child: Column(
                     children: [
-                      Icon(Icons.history_rounded, size: 40, color: AppColors.muted),
+                      Icon(
+                        Icons.history_rounded,
+                        size: 40,
+                        color: AppColors.muted,
+                      ),
                       SizedBox(height: 10),
                       Text(
                         'Belum ada riwayat pada kategori ini',
@@ -1649,7 +1713,10 @@ class HistoryPage extends StatelessWidget {
                               ],
                             ),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
                               decoration: BoxDecoration(
                                 color: AppColors.softGreen,
                                 borderRadius: BorderRadius.circular(12),
@@ -1673,15 +1740,24 @@ class HistoryPage extends StatelessWidget {
                           children: [
                             Text(
                               'Langkah: ${s.totalSteps}',
-                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 13,
+                              ),
                             ),
                             Text(
                               'Reaksi: ${s.avgReactionSeconds}s',
-                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 13,
+                              ),
                             ),
                             Text(
                               'Simetri: ${s.bilateralSymmetry}%',
-                              style: const TextStyle(color: AppColors.muted, fontSize: 13),
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 13,
+                              ),
                             ),
                             const Text(
                               'Detail ›',
@@ -1917,7 +1993,11 @@ class SettingsPage extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.edit_outlined, color: AppColors.green, size: 20),
+                const Icon(
+                  Icons.edit_outlined,
+                  color: AppColors.green,
+                  size: 20,
+                ),
               ],
             ),
           ),
@@ -1943,7 +2023,8 @@ class SettingsPage extends StatelessWidget {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      color: connected ? AppColors.softGreen : AppColors.amberBg,
+                      color:
+                          connected ? AppColors.softGreen : AppColors.amberBg,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
@@ -1970,7 +2051,9 @@ class SettingsPage extends StatelessWidget {
                               ? 'Terhubung ke ADVAN MF01-83405B'
                               : 'Belum terhubung ke Wi-Fi MiFi',
                           style: TextStyle(
-                            color: connected ? AppColors.green : AppColors.amberText,
+                            color: connected
+                                ? AppColors.green
+                                : AppColors.amberText,
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
                           ),
@@ -1985,17 +2068,29 @@ class SettingsPage extends StatelessWidget {
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Firmware', style: TextStyle(color: AppColors.muted, fontSize: 13)),
-                  const Text('v1.0.0 (ESP32 DevKit)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                children: const [
+                  Text(
+                    'Firmware',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                  ),
+                  Text(
+                    'v1.0.0 (ESP32 DevKit)',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text('Gateway MiFi', style: TextStyle(color: AppColors.muted, fontSize: 13)),
-                  const Text('192.168.0.1', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                children: const [
+                  Text(
+                    'Gateway MiFi',
+                    style: TextStyle(color: AppColors.muted, fontSize: 13),
+                  ),
+                  Text(
+                    '192.168.0.1',
+                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
                 ],
               ),
               const SizedBox(height: 16),
@@ -2003,9 +2098,14 @@ class SettingsPage extends StatelessWidget {
                 width: double.infinity,
                 child: OutlinedButton.icon(
                   onPressed: onManageMat,
-                  icon: const Icon(Icons.settings_input_antenna_rounded, size: 18),
+                  icon: const Icon(
+                    Icons.settings_input_antenna_rounded,
+                    size: 18,
+                  ),
                   label: Text(
-                    connected ? 'Kelola Koneksi Wi-Fi' : 'Atur Koneksi Wi-Fi Matras',
+                    connected
+                        ? 'Kelola Koneksi Wi-Fi'
+                        : 'Atur Koneksi Wi-Fi Matras',
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: AppColors.green,
@@ -2035,19 +2135,34 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.format_size_rounded, color: AppColors.green),
-                title: const Text('Ukuran Teks', style: TextStyle(fontWeight: FontWeight.w600)),
+                leading: const Icon(
+                  Icons.format_size_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Ukuran Teks',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: const Text('Sesuaikan kenyamanan membaca lansia'),
                 trailing: Text(
                   '$textSizeLabel ›',
-                  style: const TextStyle(color: AppColors.green, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: AppColors.green,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 onTap: onSelectTextSize,
               ),
               const Divider(color: AppColors.border, height: 1),
               SwitchListTile(
-                secondary: const Icon(Icons.contrast_rounded, color: AppColors.green),
-                title: const Text('Kontras Tinggi', style: TextStyle(fontWeight: FontWeight.w600)),
+                secondary: const Icon(
+                  Icons.contrast_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Kontras Tinggi',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: const Text('Pertajam kontras elemen visual layar'),
                 value: preferences['contrast'] ?? true,
                 activeColor: AppColors.green,
@@ -2055,10 +2170,19 @@ class SettingsPage extends StatelessWidget {
               ),
               const Divider(color: AppColors.border, height: 1),
               ListTile(
-                leading: const Icon(Icons.alarm_rounded, color: AppColors.green),
-                title: const Text('Pengingat Latihan Harian', style: TextStyle(fontWeight: FontWeight.w600)),
+                leading: const Icon(
+                  Icons.alarm_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Pengingat Latihan Harian',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: Text('Jadwal: $reminderTime'),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                ),
                 onTap: onSetReminderTime,
               ),
             ],
@@ -2080,8 +2204,14 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             children: [
               SwitchListTile(
-                secondary: const Icon(Icons.volume_up_rounded, color: AppColors.green),
-                title: const Text('Suara Aba-aba (Audio DFPlayer)', style: TextStyle(fontWeight: FontWeight.w600)),
+                secondary: const Icon(
+                  Icons.volume_up_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Suara Aba-aba (Audio DFPlayer)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
                 subtitle: const Text('Bunyi nada saat injakan benar & selesai'),
                 value: preferences['audio'] ?? true,
                 activeColor: AppColors.green,
@@ -2089,9 +2219,16 @@ class SettingsPage extends StatelessWidget {
               ),
               const Divider(color: AppColors.border, height: 1),
               SwitchListTile(
-                secondary: const Icon(Icons.lightbulb_outline_rounded, color: AppColors.green),
-                title: const Text('Petunjuk Lampu LED (74HC595)', style: TextStyle(fontWeight: FontWeight.w600)),
-                subtitle: const Text('Pola LED menyala pada ubin target matras'),
+                secondary: const Icon(
+                  Icons.lightbulb_outline_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Petunjuk Lampu LED (74HC595)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle:
+                    const Text('Pola LED menyala pada ubin target matras'),
                 value: preferences['vibration'] ?? true,
                 activeColor: AppColors.green,
                 onChanged: (val) => onPreferenceChanged('vibration', val),
@@ -2115,23 +2252,50 @@ class SettingsPage extends StatelessWidget {
           child: Column(
             children: [
               ListTile(
-                leading: const Icon(Icons.help_outline_rounded, color: AppColors.green),
-                title: const Text('Pusat Bantuan & Panduan Matras', style: TextStyle(fontWeight: FontWeight.w600)),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                leading: const Icon(
+                  Icons.help_outline_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Pusat Bantuan & Panduan Matras',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                ),
                 onTap: onShowHelp,
               ),
               const Divider(color: AppColors.border, height: 1),
               ListTile(
-                leading: const Icon(Icons.health_and_safety_rounded, color: AppColors.green),
-                title: const Text('Protokol Keamanan Rehabilitasi', style: TextStyle(fontWeight: FontWeight.w600)),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                leading: const Icon(
+                  Icons.health_and_safety_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Protokol Keamanan Rehabilitasi',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                ),
                 onTap: onShowSafety,
               ),
               const Divider(color: AppColors.border, height: 1),
               ListTile(
-                leading: const Icon(Icons.security_rounded, color: AppColors.green),
-                title: const Text('Keamanan Data Medis (Supabase)', style: TextStyle(fontWeight: FontWeight.w600)),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+                leading: const Icon(
+                  Icons.security_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Keamanan Data Medis (Supabase)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: AppColors.muted,
+                ),
                 onTap: onShowPrivacy,
               ),
             ],
@@ -2174,12 +2338,16 @@ class _DeviceConnectionSheet extends StatelessWidget {
     required this.isConnected,
     required this.isCheckingCloud,
     required this.onCheckCloud,
+    required this.onConnectDirect,
+    required this.onDisconnect,
     required this.onToggleVirtual,
   });
 
   final bool isConnected;
   final bool isCheckingCloud;
   final VoidCallback onCheckCloud;
+  final VoidCallback onConnectDirect;
+  final VoidCallback onDisconnect;
   final ValueChanged<bool> onToggleVirtual;
 
   @override
@@ -2217,7 +2385,8 @@ class _DeviceConnectionSheet extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: isConnected ? AppColors.softGreen : AppColors.amberBg,
                   borderRadius: BorderRadius.circular(20),
@@ -2244,25 +2413,25 @@ class _DeviceConnectionSheet extends StatelessWidget {
               border: Border.all(color: AppColors.border),
             ),
             child: Column(
-              children: [
+              children: const [
                 _WifiInfoRow(
                   label: 'Nama SSID (MiFi)',
                   value: 'ADVAN MF01-83405B',
                   icon: Icons.wifi,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _WifiInfoRow(
                   label: 'Kata Sandi',
                   value: '085848719373',
                   icon: Icons.key_rounded,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _WifiInfoRow(
                   label: 'IP Gateway Router',
                   value: '192.168.0.1',
                   icon: Icons.router_rounded,
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _WifiInfoRow(
                   label: 'ID Perangkat',
                   value: 'SGT-01 (ESP32 DevKit)',
@@ -2273,18 +2442,48 @@ class _DeviceConnectionSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
+          // Tombol Hubungkan / Putuskan Matras
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: isConnected ? onDisconnect : onConnectDirect,
+              icon: Icon(
+                isConnected ? Icons.link_off_rounded : Icons.link_rounded,
+                size: 20,
+              ),
+              label: Text(
+                isConnected
+                    ? 'Putuskan Koneksi Matras'
+                    : 'Hubungkan ke Matras (ADVAN MF01)',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor:
+                    isConnected ? Colors.blueGrey : AppColors.green,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
           // Tombol Cek Cloud Langsung
           SizedBox(
             width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
+            height: 46,
+            child: OutlinedButton.icon(
               onPressed: isCheckingCloud ? null : onCheckCloud,
               icon: isCheckingCloud
                   ? const SizedBox(
-                      width: 18,
-                      height: 18,
+                      width: 16,
+                      height: 16,
                       child: CircularProgressIndicator(
-                        color: Colors.white,
                         strokeWidth: 2,
                       ),
                     )
@@ -2293,10 +2492,11 @@ class _DeviceConnectionSheet extends StatelessWidget {
                 isCheckingCloud
                     ? 'Memeriksa Cloud Supabase...'
                     : 'Periksa Status Matras di Cloud',
-                style: const TextStyle(fontWeight: FontWeight.bold),
+                style: const TextStyle(fontWeight: FontWeight.w600),
               ),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.green,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.green,
+                side: const BorderSide(color: AppColors.green),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -2341,7 +2541,6 @@ class _DeviceConnectionSheet extends StatelessWidget {
                   activeColor: AppColors.green,
                   onChanged: (val) {
                     onToggleVirtual(val);
-                    Navigator.pop(context);
                   },
                 ),
               ],
@@ -2361,7 +2560,7 @@ class _DeviceConnectionSheet extends StatelessWidget {
           const Text(
             '1. Nyalakan MiFi ADVAN MF01 Anda.\n'
             '2. Pastikan HP dan Matras ESP32 terhubung ke Wi-Fi ADVAN MF01-83405B.\n'
-            '3. Matras akan otomatis sinkronisasi status ke Cloud Supabase.',
+            '3. Tekan "Hubungkan ke Matras" di atas untuk menghubungkan aplikasi.',
             style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.45),
           ),
         ],
@@ -2510,7 +2709,9 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
         }
       } else {
         if (tileNumber == _targetTile) {
-          final rt = DateTime.now().difference(_roundStartTime!).inMilliseconds / 1000.0;
+          final rt =
+              DateTime.now().difference(_roundStartTime!).inMilliseconds /
+              1000.0;
           _totalReactionSeconds += rt;
           _correctHits++;
           final nextRound = _reactiveRound + 1;
@@ -2561,7 +2762,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Row(
@@ -2608,7 +2809,11 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               ),
               child: const Row(
                 children: [
-                  Icon(Icons.cloud_done_rounded, color: AppColors.green, size: 20),
+                  Icon(
+                    Icons.cloud_done_rounded,
+                    color: AppColors.green,
+                    size: 20,
+                  ),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -2629,7 +2834,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.green),
             onPressed: () {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               widget.onSessionFinished(sessionRecord);
             },
             child: const Text('Lihat di Riwayat'),
@@ -2658,7 +2863,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             children: [
               IconButton(
                 onPressed: widget.onBack,
-                icon: const Icon(Icons.arrow_back_rounded, color: AppColors.forest),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppColors.forest,
+                ),
               ),
               const SizedBox(width: 6),
               const Text(
@@ -2752,7 +2960,8 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                         : 0,
                     minHeight: 8,
                     backgroundColor: AppColors.border,
-                    valueColor: const AlwaysStoppedAnimation<Color>(AppColors.green),
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(AppColors.green),
                   ),
                 ),
               ],
@@ -2841,14 +3050,16 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             child: FilledButton(
               onPressed: _isRunning ? _finishTraining : _startTraining,
               style: FilledButton.styleFrom(
-                backgroundColor: _isRunning ? Colors.redAccent : AppColors.green,
+                backgroundColor:
+                    _isRunning ? Colors.redAccent : AppColors.green,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
               ),
               child: Text(
                 _isRunning ? 'Selesaikan Sesi' : 'Mulai Latihan Sekarang',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -2917,7 +3128,9 @@ class _MatrasTileWidget extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isTarget ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF64748B),
+              color: isTarget
+                  ? Colors.white.withValues(alpha: 0.9)
+                  : const Color(0xFF64748B),
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -2985,7 +3198,10 @@ class _SessionDetailDialog extends StatelessWidget {
           children: [
             _SummaryStat(label: 'Akurasi', val: '${session.accuracyPercent}%'),
             _SummaryStat(label: 'Total Langkah', val: '${session.totalSteps}'),
-            _SummaryStat(label: 'Avg Reaksi', val: '${session.avgReactionSeconds}s'),
+            _SummaryStat(
+              label: 'Avg Reaksi',
+              val: '${session.avgReactionSeconds}s',
+            ),
           ],
         ),
         const SizedBox(height: 16),
@@ -3003,8 +3219,14 @@ class _SessionDetailDialog extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Kiri: ${session.bilateralSymmetry}%', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
-            Text('Kanan: ${100 - session.bilateralSymmetry}%', style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+            Text(
+              'Kiri: ${session.bilateralSymmetry}%',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
+            Text(
+              'Kanan: ${100 - session.bilateralSymmetry}%',
+              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+            ),
           ],
         ),
         const SizedBox(height: 4),
@@ -3123,13 +3345,17 @@ class _PatientProfileDialogState extends State<_PatientProfileDialog> {
           const SizedBox(height: 10),
           TextField(
             controller: _therapistCtrl,
-            decoration: const InputDecoration(labelText: 'Fisioterapis Pembimbing'),
+            decoration:
+                const InputDecoration(labelText: 'Fisioterapis Pembimbing'),
           ),
           const SizedBox(height: 14),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Target Latihan Harian:', style: TextStyle(fontSize: 13)),
+              const Text(
+                'Target Latihan Harian:',
+                style: TextStyle(fontSize: 13),
+              ),
               DropdownButton<int>(
                 value: _targetMinutes,
                 items: [5, 10, 15, 20].map((m) {
@@ -3180,7 +3406,8 @@ class _HelpCenterDialog extends StatelessWidget {
         SizedBox(width: 8),
         Text(
           'Pusat Bantuan',
-          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+          style:
+              TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
         ),
       ],
     ),
@@ -3250,7 +3477,8 @@ class _SafetyGuidelinesDialog extends StatelessWidget {
         SizedBox(width: 8),
         Text(
           'Keamanan Latihan',
-          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+          style:
+              TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
         ),
       ],
     ),
@@ -3268,7 +3496,8 @@ class _SafetyGuidelinesDialog extends StatelessWidget {
             '2. Permukaan Datar: Letakkan matras pada lantai yang rata, bersih, dan bebas dari halangan.\n\n'
             '3. Sepatu Anti-Selip: Gunakan alas kaki tertutup dengan sol karet anti-selip.\n\n'
             '4. Batas Kelelahan: Segera istirahat bila timbul pusing, nyeri dada, atau napas terengah-engah.',
-            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
+            style:
+                TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
           ),
         ],
       ),
@@ -3296,7 +3525,8 @@ class _PrivacyInfoDialog extends StatelessWidget {
         SizedBox(width: 8),
         Text(
           'Keamanan & Privasi',
-          style: TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
+          style:
+              TextStyle(color: AppColors.forest, fontWeight: FontWeight.bold),
         ),
       ],
     ),
@@ -3314,7 +3544,8 @@ class _PrivacyInfoDialog extends StatelessWidget {
             '• Database PostgreSQL dikelola secara aman di Supabase Cloud.\n'
             '• Hanya fisioterapis dan pasien terdaftar yang memiliki akses rekam medis.\n'
             '• Tidak ada pelacak atau pihak ketiga yang mengumpulkan data pribadi Anda.',
-            style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
+            style:
+                TextStyle(fontSize: 13, color: AppColors.muted, height: 1.45),
           ),
         ],
       ),
