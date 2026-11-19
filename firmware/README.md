@@ -83,10 +83,11 @@ Buka **Tools $\rightarrow$ Manage Libraries...**, cari dan instal library:
 ### Langkah 3: Buka & Konfigurasi Kode Firmware
 1. Buka file:
    `firmware/esp32_stepping_grid/esp32_stepping_grid.ino`
-2. Sesuaikan konfigurasi Wi-Fi di baris 20-21:
+2. Konfigurasi Wi-Fi sudah disesuaikan dengan router MiFi ADVAN Anda:
    ```cpp
-   const char* WIFI_SSID     = "NAMA_WIFI_RUMAH_ANDA";
-   const char* WIFI_PASSWORD = "PASSWORD_WIFI_ANDA";
+   const char* WIFI_SSID     = "ADVAN MF01-83405B";  // SSID MiFi
+   const char* WIFI_PASSWORD = "085848719373";      // Kata Sandi MiFi
+   const char* ROUTER_IP     = "192.168.0.1";       // IP Router MiFi Advan
    ```
 3. Konfigurasi Supabase sudah terisi otomatis sesuai project Anda (`rtvtralxxvzxitdqjrco.supabase.co`).
 

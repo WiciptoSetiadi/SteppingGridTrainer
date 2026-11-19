@@ -16,8 +16,10 @@
 // ==============================================================================
 // 1. KONFIGURASI WI-FI & SUPABASE CLOUD
 // ==============================================================================
-const char* WIFI_SSID     = "NAMA_WIFI_ANDA";         // Ganti dengan SSID Wi-Fi Anda
-const char* WIFI_PASSWORD = "PASSWORD_WIFI_ANDA";     // Ganti dengan Password Wi-Fi Anda
+// Sesuai jaringan MiFi ADVAN MF01 Anda:
+const char* WIFI_SSID     = "ADVAN MF01-83405B";      // SSID MiFi Advan
+const char* WIFI_PASSWORD = "085848719373";          // Kata Sandi MiFi Advan
+const char* ROUTER_IP     = "192.168.0.1";           // Gateway IP MiFi Advan
 
 // Supabase Project Credentials (Terkoneksi ke project rtvtralxxvzxitdqjrco)
 const char* SUPABASE_HOST = "rtvtralxxvzxitdqjrco.supabase.co";
@@ -147,7 +149,9 @@ void checkWiFiConnection() {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n[WiFi] Terhubung! IP: " + WiFi.localIP().toString());
+    Serial.println("\n[WiFi] Terhubung ke " + String(WIFI_SSID));
+    Serial.println("[WiFi] IP ESP32 : " + WiFi.localIP().toString());
+    Serial.println("[WiFi] Gateway  : " + WiFi.gatewayIP().toString());
     digitalWrite(PIN_BOARD_LED, HIGH);
     beepStartSequence();
   } else {
