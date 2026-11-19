@@ -3323,7 +3323,26 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                   child: InkWell(
                     onTap: _isRunning
                         ? null
-                        : () => setState(() => _selectedModeIndex = index),
+                        : () {
+                            setState(() {
+                              _selectedModeIndex = index;
+                              if (index == 0) {
+                                _targetTile = _fsstSequence[0];
+                                _totalSteps = _fsstSequence.length;
+                              } else if (index == 1) {
+                                _targetTile = _lateralSequence[0];
+                                _totalSteps = _lateralSequence.length;
+                              } else {
+                                _targetTile = 1;
+                                _totalSteps = _maxReactiveRounds;
+                                _isWaitingForHome = true;
+                              }
+                            });
+                            DeviceService.vibrate(
+                              durationMs: 60,
+                              enabled: widget.vibrationEnabled,
+                            );
+                          },
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -3364,7 +3383,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                           ? (_selectedModeIndex == 2 && _isWaitingForHome
                               ? 'STANDBY: UBIN 1'
                               : 'TARGET: UBIN $_targetTile')
-                          : 'Siap Memulai',
+                          : 'Siap Memulai (${modeNames[_selectedModeIndex]})',
                       style: TextStyle(
                         color: _isRunning ? AppColors.green : AppColors.muted,
                         fontSize: 16,
@@ -3399,79 +3418,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
-          // MATRAS 4 UBIN INTERAKTIF (U1 - U4)
-          Center(
-            child: Container(
-              width: 320,
-              height: 320,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 10,
-                  ),
-                ],
-              ),
-              child: Column(
-                children: [
-                  // Baris Atas: Ubin 1 (Kiri) & Ubin 2 (Kanan)
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _MatrasTileWidget(
-                            tileNum: 1,
-                            label: 'Depan-Kiri',
-                            isTarget: _isRunning && _targetTile == 1,
-                            onTap: () => _onTileStepped(1),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _MatrasTileWidget(
-                            tileNum: 2,
-                            label: 'Depan-Kanan',
-                            isTarget: _isRunning && _targetTile == 2,
-                            onTap: () => _onTileStepped(2),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  // Baris Bawah: Ubin 3 (Kiri) & Ubin 4 (Kanan)
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _MatrasTileWidget(
-                            tileNum: 3,
-                            label: 'Belakang-Kiri',
-                            isTarget: _isRunning && _targetTile == 3,
-                            onTap: () => _onTileStepped(3),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _MatrasTileWidget(
-                            tileNum: 4,
-                            label: 'Belakang-Kanan',
-                            isTarget: _isRunning && _targetTile == 4,
-                            onTap: () => _onTileStepped(4),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // MATRAS DINAMIS SESUAI MODE LATIHAN (FSST 2X2, LATERAL 1X4, REACTIVE T-SHAPE)
+          _buildMatrasLayout(),
 
           const SizedBox(height: 24),
 
@@ -3506,6 +3456,340 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
       ),
     );
   }
+
+  Widget _buildMatrasLayout() {
+    if (_selectedModeIndex == 0) {
+      return _buildFsst2x2Matras();
+    } else if (_selectedModeIndex == 1) {
+      return _buildLateral1x4Matras();
+    } else {
+      return _buildReactiveTShapeMatras();
+    }
+  }
+
+  Widget _buildFsst2x2Matras() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.softGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.grid_view_rounded, size: 14, color: AppColors.green),
+              SizedBox(width: 6),
+              Text(
+                'Bentuk Matras: Matrix 2x2 (FSST Step)',
+                style: TextStyle(
+                  color: AppColors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Container(
+            width: 320,
+            height: 320,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF334155), width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 1,
+                          label: 'Depan-Kiri (1)',
+                          isTarget: _isRunning && _targetTile == 1,
+                          onTap: () => _onTileStepped(1),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 2,
+                          label: 'Depan-Kanan (2)',
+                          isTarget: _isRunning && _targetTile == 2,
+                          onTap: () => _onTileStepped(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 3,
+                          label: 'Belakang-Kiri (3)',
+                          isTarget: _isRunning && _targetTile == 3,
+                          onTap: () => _onTileStepped(3),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 4,
+                          label: 'Belakang-Kanan (4)',
+                          isTarget: _isRunning && _targetTile == 4,
+                          onTap: () => _onTileStepped(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Alur Langkah FSST: Ubin 1 ➔ 2 ➔ 4 ➔ 3 ➔ 1',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLateral1x4Matras() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.softGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.view_column_rounded, size: 14, color: AppColors.green),
+              SizedBox(width: 6),
+              Text(
+                'Bentuk Matras: Garis Lurus 1x4 (Lateral Step)',
+                style: TextStyle(
+                  color: AppColors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Container(
+            width: double.infinity,
+            height: 145,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFF334155), width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _MatrasTileWidget(
+                    tileNum: 1,
+                    label: 'Kiri (1)',
+                    isTarget: _isRunning && _targetTile == 1,
+                    onTap: () => _onTileStepped(1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MatrasTileWidget(
+                    tileNum: 2,
+                    label: 'Tengah 1 (2)',
+                    isTarget: _isRunning && _targetTile == 2,
+                    onTap: () => _onTileStepped(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MatrasTileWidget(
+                    tileNum: 3,
+                    label: 'Tengah 2 (3)',
+                    isTarget: _isRunning && _targetTile == 3,
+                    onTap: () => _onTileStepped(3),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _MatrasTileWidget(
+                    tileNum: 4,
+                    label: 'Kanan (4)',
+                    isTarget: _isRunning && _targetTile == 4,
+                    onTap: () => _onTileStepped(4),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Alur Langkah Lateral: Ubin 1 ➔ 2 ➔ 3 ➔ 4 ➔ 3 ➔ 2 ➔ 1',
+          style: TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReactiveTShapeMatras() {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          decoration: BoxDecoration(
+            color: AppColors.softGreen,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.gamepad_rounded, size: 14, color: AppColors.green),
+              SizedBox(width: 6),
+              Text(
+                'Bentuk Matras: T-Shape (Reactive Step)',
+                style: TextStyle(
+                  color: AppColors.green,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Center(
+          child: Container(
+            width: 340,
+            height: 310,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFF334155), width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.18),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                // Sayap Atas Huruf T (Ubin 2, Ubin 3, Ubin 4 sebagai Target Acak)
+                Expanded(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 2,
+                          label: 'Target Kiri',
+                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 2,
+                          onTap: () => _onTileStepped(2),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 3,
+                          label: 'Target Maju',
+                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 3,
+                          onTap: () => _onTileStepped(3),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 4,
+                          label: 'Target Kanan',
+                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 4,
+                          onTap: () => _onTileStepped(4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Batang Bawah Huruf T (Ubin 1 di Tengah sebagai Standby / Home Base)
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Expanded(child: SizedBox()),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _MatrasTileWidget(
+                          tileNum: 1,
+                          label: 'Standby (Home)',
+                          icon: Icons.home_rounded,
+                          isTarget: _isRunning && _isWaitingForHome,
+                          onTap: () => _onTileStepped(1),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Expanded(child: SizedBox()),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _isWaitingForHome
+              ? 'Standby: Injak Ubin 1 di tengah untuk memicu target'
+              : 'Target Aktif: Segera injak Ubin $_targetTile yang menyala!',
+          style: TextStyle(
+            color: _isWaitingForHome ? AppColors.green : Colors.orange.shade800,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _MatrasTileWidget extends StatelessWidget {
@@ -3514,12 +3798,14 @@ class _MatrasTileWidget extends StatelessWidget {
     required this.label,
     required this.isTarget,
     required this.onTap,
+    this.icon,
   });
 
   final int tileNum;
   final String label;
   final bool isTarget;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) => InkWell(
@@ -3532,39 +3818,71 @@ class _MatrasTileWidget extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isTarget ? Colors.white : const Color(0xFF475569),
-          width: isTarget ? 3 : 1,
+          width: isTarget ? 3 : 1.5,
         ),
+        boxShadow: isTarget
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.5),
+                  blurRadius: 10,
+                  spreadRadius: 2,
+                ),
+              ]
+            : null,
       ),
       alignment: Alignment.center,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Indikator LED 74HC595 simulasi
-          Container(
-            width: 14,
-            height: 14,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isTarget ? Colors.yellowAccent : Colors.black26,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: isTarget ? Colors.yellowAccent : Colors.black38,
+                  boxShadow: isTarget
+                      ? [
+                          const BoxShadow(
+                            color: Colors.yellowAccent,
+                            blurRadius: 6,
+                            spreadRadius: 1,
+                          ),
+                        ]
+                      : null,
+                ),
+              ),
+              if (icon != null) ...[
+                const SizedBox(width: 4),
+                Icon(icon, size: 14, color: isTarget ? Colors.white : const Color(0xFF94A3B8)),
+              ],
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 4),
           Text(
             'UBIN $tileNum',
             style: TextStyle(
               color: isTarget ? Colors.white : const Color(0xFF94A3B8),
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
           ),
-          Text(
-            label,
-            style: TextStyle(
-              color: isTarget
-                  ? Colors.white.withValues(alpha: 0.9)
-                  : const Color(0xFF64748B),
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: isTarget
+                    ? Colors.white.withValues(alpha: 0.95)
+                    : const Color(0xFF64748B),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
