@@ -3038,7 +3038,8 @@ class InteractiveTrainingScreen extends StatefulWidget {
       _InteractiveTrainingScreenState();
 }
 
-class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
+class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedModeIndex = 0; // 0: FSST 2x2, 1: Lateral 1x4, 2: Reactive T
   bool _isRunning = false;
   int _currentStep = 0;
@@ -3061,7 +3062,109 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
   final List<int> _fsstSequence = [1, 2, 4, 3, 1];
   final List<int> _lateralSequence = [1, 2, 3, 4, 3, 2, 1];
 
+  // Animasi Panduan Langkah (Demo) & Pulsing Glow
+  late AnimationController _pulseController;
+  late Animation<double> _pulseScale;
+  bool _isDemoActive = false;
+  int _demoStepIndex = 0;
+  Timer? _demoTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    )..repeat(reverse: true);
+    _pulseScale = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _demoTimer?.cancel();
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _onSelectMode(int index) {
+    if (_isRunning) return;
+    setState(() {
+      _selectedModeIndex = index;
+      _demoStepIndex = 0;
+      if (index == 0) {
+        _targetTile = _fsstSequence[0];
+        _totalSteps = _fsstSequence.length;
+      } else if (index == 1) {
+        _targetTile = _lateralSequence[0];
+        _totalSteps = _lateralSequence.length;
+      } else {
+        _targetTile = 1;
+        _totalSteps = _maxReactiveRounds;
+        _isWaitingForHome = true;
+      }
+    });
+    DeviceService.vibrate(
+      durationMs: 60,
+      enabled: widget.vibrationEnabled,
+    );
+  }
+
+  void _toggleDemoAnimation() {
+    if (_isRunning) return;
+    setState(() {
+      _isDemoActive = !_isDemoActive;
+      _demoStepIndex = 0;
+    });
+
+    if (_isDemoActive) {
+      DeviceService.vibrate(durationMs: 40, enabled: widget.vibrationEnabled);
+      _demoTimer?.cancel();
+      _demoTimer = Timer.periodic(const Duration(milliseconds: 950), (t) {
+        if (!mounted) return;
+        setState(() {
+          if (_selectedModeIndex == 0) {
+            _demoStepIndex = (_demoStepIndex + 1) % _fsstSequence.length;
+          } else if (_selectedModeIndex == 1) {
+            _demoStepIndex = (_demoStepIndex + 1) % _lateralSequence.length;
+          } else {
+            _demoStepIndex = (_demoStepIndex + 1) % 2;
+          }
+        });
+        DeviceService.vibrate(durationMs: 30, enabled: widget.vibrationEnabled);
+        DeviceService.playAudioFeedback(enabled: widget.audioEnabled);
+      });
+    } else {
+      _demoTimer?.cancel();
+    }
+  }
+
+  int get _activeHighlightedTile {
+    if (_isRunning) {
+      if (_selectedModeIndex == 2 && _isWaitingForHome) {
+        return 1;
+      }
+      return _targetTile;
+    }
+    if (_isDemoActive) {
+      if (_selectedModeIndex == 0) {
+        return _fsstSequence[_demoStepIndex];
+      } else if (_selectedModeIndex == 1) {
+        return _lateralSequence[_demoStepIndex];
+      } else {
+        return _demoStepIndex == 0 ? 1 : 3;
+      }
+    }
+    return _targetTile;
+  }
+
   void _startTraining() {
+    if (_isDemoActive) {
+      _demoTimer?.cancel();
+      _isDemoActive = false;
+    }
     setState(() {
       _isRunning = true;
       _currentStep = 0;
@@ -3179,16 +3282,17 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
 
     final modeNames = ['FSST 2x2', 'Lateral 1x4', 'Reactive T-Shape'];
     final sessionRecord = SessionRecord(
-      id: 'SES-${DateTime.now().millisecondsSinceEpoch % 1000}',
+      id: 'SES-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
       modeName: modeNames[_selectedModeIndex],
       dateText: 'Hari ini, ${TimeOfDay.now().format(context)}',
-      durationText: '${_elapsedSeconds.toStringAsFixed(1)} dtk',
-      totalSteps: _correctHits,
+      durationText: '${_elapsedSeconds.toStringAsFixed(1)} detik',
+      totalSteps: _selectedModeIndex == 2 ? _maxReactiveRounds : _totalSteps,
       accuracyPercent: accuracy,
       avgReactionSeconds: double.parse(avgRt.toStringAsFixed(2)),
       bilateralSymmetry: 50,
-      clinicalNote:
-          'Sesi berhasil diselesaikan. Koordinasi motorik terukur dan tersinkronisasi ke Cloud.',
+      clinicalNote: _selectedModeIndex == 2
+          ? 'Respons refleks terhadap stimulus acak: ${avgRt.toStringAsFixed(2)} detik per target.'
+          : 'Sesi latihan sekuensial berhasil diselesaikan dengan akurasi $accuracy%.',
     );
 
     showDialog<void>(
@@ -3199,7 +3303,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
         title: const Row(
           children: [
-            Icon(Icons.emoji_events_rounded, color: Colors.amber, size: 28),
+            Icon(Icons.check_circle_rounded, color: AppColors.green, size: 28),
             SizedBox(width: 10),
             Text(
               'Latihan Selesai!',
@@ -3212,29 +3316,62 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Hasil ${modeNames[_selectedModeIndex]} Anda:',
+              'Selamat! Anda telah menyelesaikan protokol latihan ${modeNames[_selectedModeIndex]}.',
               style: const TextStyle(color: AppColors.muted, fontSize: 14),
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _SummaryStat(
-                  label: 'Waktu Total',
-                  val: '${_elapsedSeconds.toStringAsFixed(1)}s',
-                ),
-                _SummaryStat(label: 'Akurasi', val: '$accuracy%'),
-                _SummaryStat(
-                  label: 'Avg Reaksi',
-                  val: '${avgRt.toStringAsFixed(2)}s',
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.soft,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Total Waktu:', style: TextStyle(color: AppColors.muted)),
+                      Text(
+                        '${_elapsedSeconds.toStringAsFixed(1)} dtk',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.forest),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('Akurasi Langkah:', style: TextStyle(color: AppColors.muted)),
+                      Text(
+                        '$accuracy%',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.green),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _selectedModeIndex == 2 ? 'Rata-rata Waktu Reaksi:' : 'Waktu / Langkah:',
+                        style: const TextStyle(color: AppColors.muted),
+                      ),
+                      Text(
+                        '${avgRt.toStringAsFixed(2)} dtk',
+                        style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.forest),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.softGreen,
                 borderRadius: BorderRadius.circular(12),
@@ -3277,14 +3414,13 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
   }
 
   @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final modeNames = ['FSST 2x2', 'Lateral 1x4', 'Reactive T'];
+    final modeNames = ['FSST 2×2', 'Lateral 1×4', 'Reactive T'];
+    final modeIcons = [
+      Icons.grid_view_rounded,
+      Icons.view_column_rounded,
+      Icons.gamepad_rounded,
+    ];
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -3313,7 +3449,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Pilihan Mode Latihan
+          // Pilihan Mode Latihan dengan Animasi Seleksi
           Row(
             children: List.generate(3, (index) {
               final active = _selectedModeIndex == index;
@@ -3321,46 +3457,51 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                 child: Padding(
                   padding: EdgeInsets.only(right: index < 2 ? 8 : 0),
                   child: InkWell(
-                    onTap: _isRunning
-                        ? null
-                        : () {
-                            setState(() {
-                              _selectedModeIndex = index;
-                              if (index == 0) {
-                                _targetTile = _fsstSequence[0];
-                                _totalSteps = _fsstSequence.length;
-                              } else if (index == 1) {
-                                _targetTile = _lateralSequence[0];
-                                _totalSteps = _lateralSequence.length;
-                              } else {
-                                _targetTile = 1;
-                                _totalSteps = _maxReactiveRounds;
-                                _isWaitingForHome = true;
-                              }
-                            });
-                            DeviceService.vibrate(
-                              durationMs: 60,
-                              enabled: widget.vibrationEnabled,
-                            );
-                          },
+                    onTap: _isRunning ? null : () => _onSelectMode(index),
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
                         color: active ? AppColors.green : Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: active ? AppColors.green : AppColors.border,
+                          width: active ? 2 : 1,
                         ),
+                        boxShadow: active
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.green.withValues(alpha: 0.25),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ]
+                            : null,
                       ),
                       alignment: Alignment.center,
-                      child: Text(
-                        modeNames[index],
-                        style: TextStyle(
-                          color: active ? Colors.white : AppColors.forest,
-                          fontWeight: active ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 13,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            modeIcons[index],
+                            size: 14,
+                            color: active ? Colors.white : AppColors.forest,
+                          ),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              modeNames[index],
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: active ? Colors.white : AppColors.forest,
+                                fontWeight: active ? FontWeight.bold : FontWeight.w600,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -3368,11 +3509,11 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               );
             }),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           // Status & Timer Display
           AppCard(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(18),
             child: Column(
               children: [
                 Row(
@@ -3383,10 +3524,14 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                           ? (_selectedModeIndex == 2 && _isWaitingForHome
                               ? 'STANDBY: UBIN 1'
                               : 'TARGET: UBIN $_targetTile')
-                          : 'Siap Memulai (${modeNames[_selectedModeIndex]})',
+                          : (_isDemoActive
+                              ? 'MEMUTAR ANIMASI PANDUAN'
+                              : 'Siap Memulai (${modeNames[_selectedModeIndex]})'),
                       style: TextStyle(
-                        color: _isRunning ? AppColors.green : AppColors.muted,
-                        fontSize: 16,
+                        color: _isRunning
+                            ? AppColors.green
+                            : (_isDemoActive ? Colors.orange.shade800 : AppColors.muted),
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -3395,35 +3540,93 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                       style: const TextStyle(
                         color: AppColors.forest,
                         fontSize: 22,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
                     value: _totalSteps > 0
-                        ? (_selectedModeIndex == 2
-                            ? _reactiveRound / _maxReactiveRounds
-                            : _currentStep / _totalSteps)
-                        : 0,
+                        ? (_isRunning
+                            ? (_selectedModeIndex == 2
+                                ? (_reactiveRound / _maxReactiveRounds)
+                                : (_currentStep / _totalSteps))
+                            : (_isDemoActive
+                                ? ((_demoStepIndex + 1) /
+                                    (_selectedModeIndex == 0
+                                        ? _fsstSequence.length
+                                        : (_selectedModeIndex == 1
+                                            ? _lateralSequence.length
+                                            : 2)))
+                                : 0.0))
+                        : 0.0,
                     minHeight: 8,
                     backgroundColor: AppColors.border,
-                    valueColor:
-                        const AlwaysStoppedAnimation<Color>(AppColors.green),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _isDemoActive ? Colors.orange : AppColors.green,
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // MATRAS DINAMIS SESUAI MODE LATIHAN (FSST 2X2, LATERAL 1X4, REACTIVE T-SHAPE)
+          // Baris Header Matras & Tombol Animasi Panduan
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Bentuk Matras & Alur:',
+                style: TextStyle(
+                  color: AppColors.forest,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _isRunning ? null : _toggleDemoAnimation,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor:
+                      _isDemoActive ? Colors.orange.shade800 : AppColors.green,
+                  side: BorderSide(
+                    color: _isDemoActive ? Colors.orange : AppColors.green,
+                    width: 1.5,
+                  ),
+                  backgroundColor: _isDemoActive
+                      ? Colors.orange.shade50
+                      : AppColors.softGreen,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+                icon: Icon(
+                  _isDemoActive
+                      ? Icons.pause_circle_rounded
+                      : Icons.play_circle_fill_rounded,
+                  size: 16,
+                ),
+                label: Text(
+                  _isDemoActive ? 'Jeda Panduan' : 'Animasi Langkah',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // MATRAS DINAMIS DENGAN ANIMASI TRANSISI (FSST 2X2, LATERAL 1X4, REACTIVE T-SHAPE)
           _buildMatrasLayout(),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 22),
 
           // Tombol Mulai / Hentikan
           SizedBox(
@@ -3458,20 +3661,39 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
   }
 
   Widget _buildMatrasLayout() {
-    if (_selectedModeIndex == 0) {
-      return _buildFsst2x2Matras();
-    } else if (_selectedModeIndex == 1) {
-      return _buildLateral1x4Matras();
-    } else {
-      return _buildReactiveTShapeMatras();
-    }
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 380),
+      switchInCurve: Curves.easeOutBack,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.92, end: 1.0).animate(animation),
+            child: child,
+          ),
+        );
+      },
+      child: KeyedSubtree(
+        key: ValueKey<int>(_selectedModeIndex),
+        child: _selectedModeIndex == 0
+            ? _buildFsst2x2Matras()
+            : _selectedModeIndex == 1
+                ? _buildLateral1x4Matras()
+                : _buildReactiveTShapeMatras(),
+      ),
+    );
   }
 
   Widget _buildFsst2x2Matras() {
+    final activeTile = _activeHighlightedTile;
+    final isTargetActive = _isRunning || _isDemoActive;
+
     return Column(
+      key: const ValueKey('fsst_2x2_matras'),
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: AppColors.softGreen,
             borderRadius: BorderRadius.circular(12),
@@ -3482,7 +3704,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               Icon(Icons.grid_view_rounded, size: 14, color: AppColors.green),
               SizedBox(width: 6),
               Text(
-                'Bentuk Matras: Matrix 2x2 (FSST Step)',
+                'Bentuk Matras: Matrix 2×2 (FSST Step)',
                 style: TextStyle(
                   color: AppColors.green,
                   fontWeight: FontWeight.bold,
@@ -3504,8 +3726,8 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               border: Border.all(color: const Color(0xFF334155), width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 12,
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 14,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -3518,8 +3740,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                       Expanded(
                         child: _MatrasTileWidget(
                           tileNum: 1,
-                          label: 'Depan-Kiri (1)',
-                          isTarget: _isRunning && _targetTile == 1,
+                          label: 'Depan-Kiri',
+                          stepBadge: 'Langkah 1 & 5',
+                          isTarget: isTargetActive && activeTile == 1,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(1),
                         ),
                       ),
@@ -3527,8 +3751,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                       Expanded(
                         child: _MatrasTileWidget(
                           tileNum: 2,
-                          label: 'Depan-Kanan (2)',
-                          isTarget: _isRunning && _targetTile == 2,
+                          label: 'Depan-Kanan',
+                          stepBadge: 'Langkah 2',
+                          isTarget: isTargetActive && activeTile == 2,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(2),
                         ),
                       ),
@@ -3542,8 +3768,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                       Expanded(
                         child: _MatrasTileWidget(
                           tileNum: 3,
-                          label: 'Belakang-Kiri (3)',
-                          isTarget: _isRunning && _targetTile == 3,
+                          label: 'Belakang-Kiri',
+                          stepBadge: 'Langkah 4',
+                          isTarget: isTargetActive && activeTile == 3,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(3),
                         ),
                       ),
@@ -3551,8 +3779,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                       Expanded(
                         child: _MatrasTileWidget(
                           tileNum: 4,
-                          label: 'Belakang-Kanan (4)',
-                          isTarget: _isRunning && _targetTile == 4,
+                          label: 'Belakang-Kanan',
+                          stepBadge: 'Langkah 3',
+                          isTarget: isTargetActive && activeTile == 4,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(4),
                         ),
                       ),
@@ -3563,24 +3793,24 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'Alur Langkah FSST: Ubin 1 ➔ 2 ➔ 4 ➔ 3 ➔ 1',
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        const SizedBox(height: 10),
+        _buildSteppingSequenceFlow(
+          steps: const [1, 2, 4, 3, 1],
+          currentActive: activeTile,
         ),
       ],
     );
   }
 
   Widget _buildLateral1x4Matras() {
+    final activeTile = _activeHighlightedTile;
+    final isTargetActive = _isRunning || _isDemoActive;
+
     return Column(
+      key: const ValueKey('lateral_1x4_matras'),
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: AppColors.softGreen,
             borderRadius: BorderRadius.circular(12),
@@ -3591,7 +3821,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               Icon(Icons.view_column_rounded, size: 14, color: AppColors.green),
               SizedBox(width: 6),
               Text(
-                'Bentuk Matras: Garis Lurus 1x4 (Lateral Step)',
+                'Bentuk Matras: Garis Lurus 1×4 (Lateral Step)',
                 style: TextStyle(
                   color: AppColors.green,
                   fontWeight: FontWeight.bold,
@@ -3605,7 +3835,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
         Center(
           child: Container(
             width: double.infinity,
-            height: 145,
+            height: 155,
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: const Color(0xFF1E293B),
@@ -3613,8 +3843,8 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               border: Border.all(color: const Color(0xFF334155), width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 12,
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 14,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -3625,34 +3855,42 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                   child: _MatrasTileWidget(
                     tileNum: 1,
                     label: 'Kiri (1)',
-                    isTarget: _isRunning && _targetTile == 1,
+                    stepBadge: 'Langkah 1 & 7',
+                    isTarget: isTargetActive && activeTile == 1,
+                    pulseScale: _pulseScale,
                     onTap: () => _onTileStepped(1),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _MatrasTileWidget(
                     tileNum: 2,
                     label: 'Tengah 1 (2)',
-                    isTarget: _isRunning && _targetTile == 2,
+                    stepBadge: 'Langkah 2 & 6',
+                    isTarget: isTargetActive && activeTile == 2,
+                    pulseScale: _pulseScale,
                     onTap: () => _onTileStepped(2),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _MatrasTileWidget(
                     tileNum: 3,
                     label: 'Tengah 2 (3)',
-                    isTarget: _isRunning && _targetTile == 3,
+                    stepBadge: 'Langkah 3 & 5',
+                    isTarget: isTargetActive && activeTile == 3,
+                    pulseScale: _pulseScale,
                     onTap: () => _onTileStepped(3),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 Expanded(
                   child: _MatrasTileWidget(
                     tileNum: 4,
                     label: 'Kanan (4)',
-                    isTarget: _isRunning && _targetTile == 4,
+                    stepBadge: 'Langkah 4 (Balik)',
+                    isTarget: isTargetActive && activeTile == 4,
+                    pulseScale: _pulseScale,
                     onTap: () => _onTileStepped(4),
                   ),
                 ),
@@ -3660,24 +3898,25 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        const Text(
-          'Alur Langkah Lateral: Ubin 1 ➔ 2 ➔ 3 ➔ 4 ➔ 3 ➔ 2 ➔ 1',
-          style: TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
+        const SizedBox(height: 10),
+        _buildSteppingSequenceFlow(
+          steps: const [1, 2, 3, 4, 3, 2, 1],
+          currentActive: activeTile,
         ),
       ],
     );
   }
 
   Widget _buildReactiveTShapeMatras() {
+    final activeTile = _activeHighlightedTile;
+    final isTargetActive = _isRunning || _isDemoActive;
+    final isHomeActive = isTargetActive && activeTile == 1;
+
     return Column(
+      key: const ValueKey('reactive_t_matras'),
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
           decoration: BoxDecoration(
             color: AppColors.softGreen,
             borderRadius: BorderRadius.circular(12),
@@ -3710,8 +3949,8 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
               border: Border.all(color: const Color(0xFF334155), width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: 12,
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 14,
                   offset: const Offset(0, 4),
                 ),
               ],
@@ -3726,7 +3965,9 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                         child: _MatrasTileWidget(
                           tileNum: 2,
                           label: 'Target Kiri',
-                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 2,
+                          stepBadge: 'Target 2',
+                          isTarget: isTargetActive && activeTile == 2,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(2),
                         ),
                       ),
@@ -3735,7 +3976,9 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                         child: _MatrasTileWidget(
                           tileNum: 3,
                           label: 'Target Maju',
-                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 3,
+                          stepBadge: 'Target 3',
+                          isTarget: isTargetActive && activeTile == 3,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(3),
                         ),
                       ),
@@ -3744,14 +3987,16 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                         child: _MatrasTileWidget(
                           tileNum: 4,
                           label: 'Target Kanan',
-                          isTarget: _isRunning && !_isWaitingForHome && _targetTile == 4,
+                          stepBadge: 'Target 4',
+                          isTarget: isTargetActive && activeTile == 4,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(4),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 // Batang Bawah Huruf T (Ubin 1 di Tengah sebagai Standby / Home Base)
                 Expanded(
                   child: Row(
@@ -3762,8 +4007,10 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
                         child: _MatrasTileWidget(
                           tileNum: 1,
                           label: 'Standby (Home)',
+                          stepBadge: '🏠 Home Base',
                           icon: Icons.home_rounded,
-                          isTarget: _isRunning && _isWaitingForHome,
+                          isTarget: isHomeActive,
+                          pulseScale: _pulseScale,
                           onTap: () => _onTileStepped(1),
                         ),
                       ),
@@ -3776,18 +4023,99 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             ),
           ),
         ),
-        const SizedBox(height: 8),
-        Text(
-          _isWaitingForHome
-              ? 'Standby: Injak Ubin 1 di tengah untuk memicu target'
-              : 'Target Aktif: Segera injak Ubin $_targetTile yang menyala!',
-          style: TextStyle(
-            color: _isWaitingForHome ? AppColors.green : Colors.orange.shade800,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isHomeActive ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isHomeActive ? AppColors.green : Colors.amber.shade300,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isHomeActive ? Icons.home_rounded : Icons.flash_on_rounded,
+                size: 14,
+                color: isHomeActive ? AppColors.green : Colors.amber.shade800,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                isHomeActive
+                    ? 'Standby: Injak Ubin 1 di tengah untuk memicu target'
+                    : 'Stimulus Aktif: Segera injak Ubin $activeTile yang menyala!',
+                style: TextStyle(
+                  color: isHomeActive ? AppColors.green : Colors.amber.shade900,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildSteppingSequenceFlow({
+    required List<int> steps,
+    required int currentActive,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFCBD5E1)),
+      ),
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          const Text(
+            'Alur Langkah:',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          for (int i = 0; i < steps.length; i++) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: steps[i] == currentActive
+                    ? AppColors.green
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(
+                  color: steps[i] == currentActive
+                      ? AppColors.green
+                      : const Color(0xFFCBD5E1),
+                ),
+              ),
+              child: Text(
+                'U${steps[i]}',
+                style: TextStyle(
+                  color: steps[i] == currentActive ? Colors.white : AppColors.forest,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            if (i < steps.length - 1)
+              const Icon(
+                Icons.arrow_forward_rounded,
+                size: 12,
+                color: AppColors.muted,
+              ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -3796,99 +4124,152 @@ class _MatrasTileWidget extends StatelessWidget {
   const _MatrasTileWidget({
     required this.tileNum,
     required this.label,
+    this.stepBadge,
     required this.isTarget,
+    this.pulseScale,
     required this.onTap,
     this.icon,
   });
 
   final int tileNum;
   final String label;
+  final String? stepBadge;
   final bool isTarget;
+  final Animation<double>? pulseScale;
   final VoidCallback onTap;
   final IconData? icon;
 
   @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(16),
-    child: AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
+  Widget build(BuildContext context) {
+    Widget tileContent = AnimatedContainer(
+      duration: const Duration(milliseconds: 220),
       decoration: BoxDecoration(
-        color: isTarget ? const Color(0xFF10B981) : const Color(0xFF334155),
+        color: isTarget ? const Color(0xFF10B981) : const Color(0xFF1E293B),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isTarget ? Colors.white : const Color(0xFF475569),
-          width: isTarget ? 3 : 1.5,
+          width: isTarget ? 3.0 : 1.5,
         ),
         boxShadow: isTarget
             ? [
                 BoxShadow(
-                  color: const Color(0xFF10B981).withValues(alpha: 0.5),
-                  blurRadius: 10,
-                  spreadRadius: 2,
+                  color: const Color(0xFF10B981).withValues(alpha: 0.65),
+                  blurRadius: 14,
+                  spreadRadius: 3,
+                ),
+                const BoxShadow(
+                  color: Colors.white24,
+                  blurRadius: 4,
+                  spreadRadius: 1,
                 ),
               ]
-            : null,
+            : [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.15),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
       ),
-      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          // Header: LED Indicator & Footstep Icon
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                width: 12,
-                height: 12,
+                width: 10,
+                height: 10,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isTarget ? Colors.yellowAccent : Colors.black38,
+                  color: isTarget ? Colors.yellowAccent : Colors.black45,
                   boxShadow: isTarget
                       ? [
                           const BoxShadow(
                             color: Colors.yellowAccent,
-                            blurRadius: 6,
-                            spreadRadius: 1,
+                            blurRadius: 8,
+                            spreadRadius: 2,
                           ),
                         ]
                       : null,
                 ),
               ),
-              if (icon != null) ...[
-                const SizedBox(width: 4),
-                Icon(icon, size: 14, color: isTarget ? Colors.white : const Color(0xFF94A3B8)),
-              ],
+              const SizedBox(width: 4),
+              Icon(
+                isTarget
+                    ? Icons.directions_walk_rounded
+                    : (icon ?? Icons.touch_app_rounded),
+                size: 14,
+                color: isTarget ? Colors.white : const Color(0xFF64748B),
+              ),
             ],
           ),
           const SizedBox(height: 4),
+          // Tile Number
           Text(
             'UBIN $tileNum',
             style: TextStyle(
-              color: isTarget ? Colors.white : const Color(0xFF94A3B8),
-              fontSize: 18,
+              color: isTarget ? Colors.white : const Color(0xFFF1F5F9),
+              fontSize: 17,
               fontWeight: FontWeight.w900,
+              letterSpacing: 0.5,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+          // Position / Role Label
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: isTarget
+                  ? Colors.white.withValues(alpha: 0.95)
+                  : const Color(0xFF94A3B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (stepBadge != null) ...[
+            const SizedBox(height: 3),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
                 color: isTarget
-                    ? Colors.white.withValues(alpha: 0.95)
-                    : const Color(0xFF64748B),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+                    ? Colors.white.withValues(alpha: 0.25)
+                    : const Color(0xFF334155),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                stepBadge!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: isTarget ? Colors.white : const Color(0xFFCBD5E1),
+                  fontSize: 9.5,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
-    ),
-  );
+    );
+
+    if (isTarget && pulseScale != null) {
+      tileContent = ScaleTransition(
+        scale: pulseScale!,
+        child: tileContent,
+      );
+    }
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: tileContent,
+    );
+  }
 }
 
 // ==============================================================================
