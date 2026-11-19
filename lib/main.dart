@@ -3,7 +3,64 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+
+class DeviceService {
+  static const _channel = MethodChannel('com.steppinggrid.trainer/device');
+
+  static Future<void> openWifiSettings() async {
+    try {
+      await _channel.invokeMethod('openWifiSettings');
+    } catch (_) {}
+  }
+
+  static Future<void> openWifiPanel() async {
+    try {
+      await _channel.invokeMethod('openWifiPanel');
+    } catch (_) {
+      await openWifiSettings();
+    }
+  }
+
+  static Future<bool> enableWifi() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('enableWifi');
+      return res ?? false;
+    } catch (_) {
+      await openWifiSettings();
+      return false;
+    }
+  }
+
+  static Future<bool> isWifiEnabled() async {
+    try {
+      final res = await _channel.invokeMethod<bool>('isWifiEnabled');
+      return res ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  static Future<void> vibrate({int durationMs = 100, bool enabled = true}) async {
+    if (!enabled) return;
+    try {
+      HapticFeedback.mediumImpact();
+      await _channel.invokeMethod('vibrateDevice', {'duration': durationMs});
+    } catch (_) {
+      try {
+        HapticFeedback.mediumImpact();
+      } catch (_) {}
+    }
+  }
+
+  static void playAudioFeedback({bool enabled = true}) {
+    if (!enabled) return;
+    try {
+      SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
+  }
+}
 
 void main() => runApp(const SteppingGridApp());
 
@@ -301,68 +358,147 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _openTextSizeDialog() {
+    double tempScale = _fontScale;
+    String tempLabel = _selectedTextSizeLabel;
+
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Ukuran Teks',
-          style: TextStyle(
-            color: AppColors.forest,
-            fontWeight: FontWeight.bold,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Row(
+            children: const [
+              Icon(Icons.format_size_rounded, color: AppColors.green),
+              SizedBox(width: 10),
+              Text(
+                'Ukuran Teks',
+                style: TextStyle(
+                  color: AppColors.forest,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
           ),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<double>(
-              title: const Text('Standar (100%)'),
-              subtitle: const Text('Ukuran teks standar'),
-              value: 1.0,
-              groupValue: _fontScale,
-              activeColor: AppColors.green,
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _fontScale = val;
-                    _selectedTextSizeLabel = 'Standar';
-                  });
-                  Navigator.pop(dialogContext);
-                }
-              },
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.soft,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Pratinjau Keterbacaan:',
+                        style: TextStyle(fontSize: 11, color: AppColors.muted, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Latihan langkah mandiri dengan matras interaktif untuk pemulihan stroke.',
+                        style: TextStyle(
+                          fontSize: 13 * tempScale,
+                          color: AppColors.forest,
+                          fontWeight: FontWeight.w600,
+                          height: 1.3,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                RadioListTile<double>(
+                  title: const Text('Standar (100%)'),
+                  subtitle: const Text('Ukuran teks normal bawaan'),
+                  value: 1.0,
+                  groupValue: tempScale,
+                  activeColor: AppColors.green,
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        tempScale = val;
+                        tempLabel = 'Standar';
+                      });
+                    }
+                  },
+                ),
+                RadioListTile<double>(
+                  title: const Text('Sedang (120%)'),
+                  subtitle: const Text('Teks sedikit lebih besar'),
+                  value: 1.20,
+                  groupValue: tempScale,
+                  activeColor: AppColors.green,
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        tempScale = val;
+                        tempLabel = 'Sedang';
+                      });
+                    }
+                  },
+                ),
+                RadioListTile<double>(
+                  title: const Text('Besar (145%)'),
+                  subtitle: const Text('Sangat jelas untuk lansia'),
+                  value: 1.45,
+                  groupValue: tempScale,
+                  activeColor: AppColors.green,
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        tempScale = val;
+                        tempLabel = 'Besar';
+                      });
+                    }
+                  },
+                ),
+                RadioListTile<double>(
+                  title: const Text('Sangat Besar (170%)'),
+                  subtitle: const Text('Keterbacaan ekstra maksimal'),
+                  value: 1.70,
+                  groupValue: tempScale,
+                  activeColor: AppColors.green,
+                  onChanged: (val) {
+                    if (val != null) {
+                      setDialogState(() {
+                        tempScale = val;
+                        tempLabel = 'Sangat Besar';
+                      });
+                    }
+                  },
+                ),
+              ],
             ),
-            RadioListTile<double>(
-              title: const Text('Besar (115%)'),
-              subtitle: const Text('Lebih jelas bagi lansia'),
-              value: 1.15,
-              groupValue: _fontScale,
-              activeColor: AppColors.green,
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _fontScale = val;
-                    _selectedTextSizeLabel = 'Besar';
-                  });
-                  Navigator.pop(dialogContext);
-                }
-              },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Batal'),
             ),
-            RadioListTile<double>(
-              title: const Text('Sangat Besar (130%)'),
-              subtitle: const Text('Kontras & keterbacaan maksimal'),
-              value: 1.30,
-              groupValue: _fontScale,
-              activeColor: AppColors.green,
-              onChanged: (val) {
-                if (val != null) {
-                  setState(() {
-                    _fontScale = val;
-                    _selectedTextSizeLabel = 'Sangat Besar';
-                  });
-                  Navigator.pop(dialogContext);
-                }
+            FilledButton(
+              onPressed: () {
+                setState(() {
+                  _fontScale = tempScale;
+                  _selectedTextSizeLabel = tempLabel;
+                });
+                DeviceService.vibrate(durationMs: 80, enabled: _preferences['vibration'] ?? true);
+                Navigator.pop(dialogContext);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Ukuran teks diubah ke: $tempLabel (${(tempScale * 100).toInt()}%)'),
+                    backgroundColor: AppColors.green,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
               },
+              style: FilledButton.styleFrom(backgroundColor: AppColors.green),
+              child: const Text('Terapkan'),
             ),
           ],
         ),
@@ -509,90 +645,173 @@ class _MainScreenState extends State<MainScreen> {
     } catch (_) {}
   }
 
+  void _handlePreferenceChanged(String key, bool value) {
+    setState(() => _preferences[key] = value);
+    if (key == 'contrast') {
+      DeviceService.vibrate(durationMs: 80, enabled: _preferences['vibration'] ?? true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Mode Kontras Tinggi Diaktifkan (Visual Layar Dipertajam)'
+                : 'Mode Kontras Standar Diaktifkan',
+          ),
+          backgroundColor: AppColors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else if (key == 'vibration') {
+      if (value) {
+        DeviceService.vibrate(durationMs: 250, enabled: true);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Getaran Aktif: HP akan bergetar saat ubin diinjak & tombol ditekan'
+                : 'Getaran Dinonaktifkan',
+          ),
+          backgroundColor: AppColors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else if (key == 'audio') {
+      if (value) {
+        DeviceService.playAudioFeedback(enabled: true);
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Audio Aba-aba Aktif: Nada umpan balik akan berbunyi saat latihan'
+                : 'Audio Aba-aba Dinonaktifkan',
+          ),
+          backgroundColor: AppColors.green,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isHC = _preferences['contrast'] ?? true;
     return MediaQuery(
       data: MediaQuery.of(context).copyWith(
         textScaler: TextScaler.linear(_fontScale),
       ),
-      child: Scaffold(
-        body: SafeArea(
-          bottom: false,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 520),
-                  child: SizedBox(
+      child: ColorFiltered(
+        colorFilter: isHC
+            ? const ColorFilter.matrix(<double>[
+                1.45, 0, 0, 0, -35,
+                0, 1.45, 0, 0, -35,
+                0, 0, 1.45, 0, -35,
+                0, 0, 0, 1, 0,
+              ])
+            : const ColorFilter.mode(Colors.transparent, BlendMode.dst),
+        child: Scaffold(
+          backgroundColor: isHC ? const Color(0xFF0D1412) : AppColors.canvas,
+          body: SafeArea(
+            bottom: false,
+            child: Column(
+              children: [
+                if (isHC)
+                  Container(
                     width: double.infinity,
-                    height: constraints.maxHeight,
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 180),
-                      child: _showTraining
-                          ? InteractiveTrainingScreen(
-                              isConnected: _matrasConnected,
-                              onBack: () =>
-                                  setState(() => _showTraining = false),
-                              onSessionFinished: _handleSessionCompleted,
-                            )
-                          : IndexedStack(
-                              key: ValueKey(_selectedTab),
-                              index: _selectedTab,
-                              children: [
-                                HomePage(
-                                  patientName: _patientName,
-                                  connected: _matrasConnected,
-                                  onManageMat: _openDeviceConnectionSheet,
-                                  onStartTraining: () =>
-                                      setState(() => _showTraining = true),
-                                  onShowHistory: () =>
-                                      setState(() => _selectedTab = 1),
-                                  recentSessions: _sessions.take(3).toList(),
-                                  onSelectSession: _showSessionDetail,
-                                ),
-                                HistoryPage(
-                                  period: _period,
-                                  offset: _periodOffset,
-                                  activeFilter: _activeHistoryFilter,
-                                  sessions: _sessions,
-                                  onFilterChanged: (filter) => setState(
-                                    () => _activeHistoryFilter = filter,
-                                  ),
-                                  onPeriodChanged: (value) => setState(() {
-                                    _period = value;
-                                    _periodOffset = 0;
-                                  }),
-                                  onOffsetChanged: (value) =>
-                                      setState(() => _periodOffset = value),
-                                  onSelectSession: _showSessionDetail,
-                                ),
-                                SettingsPage(
-                                  patientName: _patientName,
-                                  patientCondition: _patientCondition,
-                                  connected: _matrasConnected,
-                                  textSizeLabel: _selectedTextSizeLabel,
-                                  reminderTime: _reminderTime,
-                                  preferences: _preferences,
-                                  onEditProfile: _openPatientProfileDialog,
-                                  onSelectTextSize: _openTextSizeDialog,
-                                  onSetReminderTime: _openReminderDialog,
-                                  onPreferenceChanged: (key, value) =>
-                                      setState(() => _preferences[key] = value),
-                                  onManageMat: _openDeviceConnectionSheet,
-                                  onShowHelp: _showHelpCenter,
-                                  onShowSafety: _showSafetyGuidelines,
-                                  onShowPrivacy: _showPrivacyInfo,
-                                  onSignOut: _confirmSignOut,
-                                ),
-                              ],
-                            ),
+                    color: const Color(0xFFFFD600),
+                    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
+                    child: const Center(
+                      child: Text(
+                        '👁️ MODE KONTRAS TINGGI AKTIF (VISUAL DIPERTAJAM)',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
                     ),
                   ),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: constraints.maxHeight,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 180),
+                              child: _showTraining
+                                  ? InteractiveTrainingScreen(
+                                      isConnected: _matrasConnected,
+                                      audioEnabled: _preferences['audio'] ?? true,
+                                      vibrationEnabled: _preferences['vibration'] ?? true,
+                                      onBack: () =>
+                                          setState(() => _showTraining = false),
+                                      onSessionFinished: _handleSessionCompleted,
+                                    )
+                                  : IndexedStack(
+                                      key: ValueKey(_selectedTab),
+                                      index: _selectedTab,
+                                      children: [
+                                        HomePage(
+                                          patientName: _patientName,
+                                          connected: _matrasConnected,
+                                          onManageMat: _openDeviceConnectionSheet,
+                                          onStartTraining: () =>
+                                              setState(() => _showTraining = true),
+                                          onShowHistory: () =>
+                                              setState(() => _selectedTab = 1),
+                                          recentSessions: _sessions.take(3).toList(),
+                                          onSelectSession: _showSessionDetail,
+                                        ),
+                                        HistoryPage(
+                                          period: _period,
+                                          offset: _periodOffset,
+                                          activeFilter: _activeHistoryFilter,
+                                          sessions: _sessions,
+                                          onFilterChanged: (filter) => setState(
+                                            () => _activeHistoryFilter = filter,
+                                          ),
+                                          onPeriodChanged: (value) => setState(() {
+                                            _period = value;
+                                            _periodOffset = 0;
+                                          }),
+                                          onOffsetChanged: (value) =>
+                                              setState(() => _periodOffset = value),
+                                          onSelectSession: _showSessionDetail,
+                                        ),
+                                        SettingsPage(
+                                          patientName: _patientName,
+                                          patientCondition: _patientCondition,
+                                          connected: _matrasConnected,
+                                          textSizeLabel: _selectedTextSizeLabel,
+                                          reminderTime: _reminderTime,
+                                          preferences: _preferences,
+                                          onEditProfile: _openPatientProfileDialog,
+                                          onSelectTextSize: _openTextSizeDialog,
+                                          onSetReminderTime: _openReminderDialog,
+                                          onPreferenceChanged: _handlePreferenceChanged,
+                                          onManageMat: _openDeviceConnectionSheet,
+                                          onShowHelp: _showHelpCenter,
+                                          onShowSafety: _showSafetyGuidelines,
+                                          onShowPrivacy: _showPrivacyInfo,
+                                          onSignOut: _confirmSignOut,
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
-              );
-            },
+              ],
+            ),
           ),
-        ),
         bottomNavigationBar: _showTraining
             ? null
             : LayoutBuilder(
@@ -2209,7 +2428,7 @@ class SettingsPage extends StatelessWidget {
                   color: AppColors.green,
                 ),
                 title: const Text(
-                  'Suara Aba-aba (Audio DFPlayer)',
+                  'Suara Aba-aba (Audio Umpan Balik)',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle: const Text('Bunyi nada saat injakan benar & selesai'),
@@ -2220,18 +2439,33 @@ class SettingsPage extends StatelessWidget {
               const Divider(color: AppColors.border, height: 1),
               SwitchListTile(
                 secondary: const Icon(
+                  Icons.vibration_rounded,
+                  color: AppColors.green,
+                ),
+                title: const Text(
+                  'Getaran Perangkat HP (Haptic)',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: const Text('HP bergetar di tangan saat ubin diinjak & ditekan'),
+                value: preferences['vibration'] ?? true,
+                activeColor: AppColors.green,
+                onChanged: (val) => onPreferenceChanged('vibration', val),
+              ),
+              const Divider(color: AppColors.border, height: 1),
+              SwitchListTile(
+                secondary: const Icon(
                   Icons.lightbulb_outline_rounded,
                   color: AppColors.green,
                 ),
                 title: const Text(
-                  'Petunjuk Lampu LED (74HC595)',
+                  'Petunjuk Lampu LED Matras (74HC595)',
                   style: TextStyle(fontWeight: FontWeight.w600),
                 ),
                 subtitle:
-                    const Text('Pola LED menyala pada ubin target matras'),
-                value: preferences['vibration'] ?? true,
+                    const Text('Pola LED menyala pada ubin target matras fisik'),
+                value: preferences['led'] ?? true,
                 activeColor: AppColors.green,
-                onChanged: (val) => onPreferenceChanged('vibration', val),
+                onChanged: (val) => onPreferenceChanged('led', val),
               ),
             ],
           ),
@@ -2333,7 +2567,7 @@ class SettingsPage extends StatelessWidget {
 // ==============================================================================
 // MODAL BOTTOM SHEET: KONEKSI WI-FI & ESP32 MATRAS
 // ==============================================================================
-class _DeviceConnectionSheet extends StatelessWidget {
+class _DeviceConnectionSheet extends StatefulWidget {
   const _DeviceConnectionSheet({
     required this.isConnected,
     required this.isCheckingCloud,
@@ -2349,6 +2583,62 @@ class _DeviceConnectionSheet extends StatelessWidget {
   final VoidCallback onConnectDirect;
   final VoidCallback onDisconnect;
   final ValueChanged<bool> onToggleVirtual;
+
+  @override
+  State<_DeviceConnectionSheet> createState() => _DeviceConnectionSheetState();
+}
+
+class _DeviceConnectionSheetState extends State<_DeviceConnectionSheet> {
+  bool _isWifiOn = true;
+  bool _isCheckingDevice = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkDeviceWifiState();
+  }
+
+  Future<void> _checkDeviceWifiState() async {
+    final enabled = await DeviceService.isWifiEnabled();
+    if (mounted) {
+      setState(() {
+        _isWifiOn = enabled;
+        _isCheckingDevice = false;
+      });
+    }
+  }
+
+  void _copyPassword() {
+    Clipboard.setData(const ClipboardData(text: '085848719373'));
+    DeviceService.vibrate(durationMs: 80, enabled: true);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Kata sandi "085848719373" berhasil disalin ke clipboard!'),
+        backgroundColor: AppColors.green,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _openDeviceWifiPanel() async {
+    await Clipboard.setData(const ClipboardData(text: '085848719373'));
+    await DeviceService.vibrate(durationMs: 100, enabled: true);
+    await DeviceService.enableWifi();
+    await DeviceService.openWifiPanel();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Membuka panel Wi-Fi HP... Sandi (085848719373) otomatis disalin! Silakan pilih "ADVAN MF01-83405B".',
+          ),
+          backgroundColor: AppColors.green,
+          duration: Duration(seconds: 4),
+        ),
+      );
+    }
+    await Future.delayed(const Duration(seconds: 2));
+    _checkDeviceWifiState();
+  }
 
   @override
   Widget build(BuildContext context) => Container(
@@ -2388,19 +2678,69 @@ class _DeviceConnectionSheet extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: isConnected ? AppColors.softGreen : AppColors.amberBg,
+                  color: widget.isConnected ? AppColors.softGreen : AppColors.amberBg,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  isConnected ? 'Online' : 'Offline',
+                  widget.isConnected ? 'Matras Online' : 'Matras Offline',
                   style: TextStyle(
-                    color: isConnected ? AppColors.green : AppColors.amberText,
+                    color: widget.isConnected ? AppColors.green : AppColors.amberText,
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+
+          // Status Hardware Wi-Fi HP
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: _isWifiOn ? AppColors.softGreen : AppColors.amberBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _isWifiOn ? AppColors.green : AppColors.amberBorder,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  _isWifiOn ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                  color: _isWifiOn ? AppColors.green : AppColors.amberText,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isCheckingDevice
+                            ? 'Memeriksa Wi-Fi HP...'
+                            : (_isWifiOn ? 'Wi-Fi HP: Aktif / Menyala' : 'Wi-Fi HP: Mati / Nonaktif'),
+                        style: TextStyle(
+                          color: _isWifiOn ? AppColors.forest : AppColors.amberText,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        _isWifiOn
+                            ? 'Siap tersambung ke router ADVAN MF01'
+                            : 'Nyalakan Wi-Fi untuk menghubungkan ke matras',
+                        style: const TextStyle(color: AppColors.muted, fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton(
+                  onPressed: _openDeviceWifiPanel,
+                  child: const Text('Buka', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
 
@@ -2413,26 +2753,27 @@ class _DeviceConnectionSheet extends StatelessWidget {
               border: Border.all(color: AppColors.border),
             ),
             child: Column(
-              children: const [
-                _WifiInfoRow(
+              children: [
+                const _WifiInfoRow(
                   label: 'Nama SSID (MiFi)',
                   value: 'ADVAN MF01-83405B',
                   icon: Icons.wifi,
                 ),
-                SizedBox(height: 8),
+                const SizedBox(height: 8),
                 _WifiInfoRow(
                   label: 'Kata Sandi',
                   value: '085848719373',
                   icon: Icons.key_rounded,
+                  isCopyable: true,
                 ),
-                SizedBox(height: 8),
-                _WifiInfoRow(
+                const SizedBox(height: 8),
+                const _WifiInfoRow(
                   label: 'IP Gateway Router',
                   value: '192.168.0.1',
                   icon: Icons.router_rounded,
                 ),
-                SizedBox(height: 8),
-                _WifiInfoRow(
+                const SizedBox(height: 8),
+                const _WifiInfoRow(
                   label: 'ID Perangkat',
                   value: 'SGT-01 (ESP32 DevKit)',
                   icon: Icons.memory_rounded,
@@ -2442,18 +2783,39 @@ class _DeviceConnectionSheet extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // Tombol Hubungkan / Putuskan Matras
+          // Tombol 1: Nyalakan Wi-Fi & Buka Sambungan HP (Akses Nyata Hardware)
           SizedBox(
             width: double.infinity,
             height: 50,
             child: FilledButton.icon(
-              onPressed: isConnected ? onDisconnect : onConnectDirect,
+              onPressed: _openDeviceWifiPanel,
+              icon: const Icon(Icons.wifi_find_rounded, size: 20),
+              label: const Text(
+                '⚡ Nyalakan & Buka Menu Wi-Fi HP',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+              ),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.deepGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Tombol 2: Hubungkan / Putuskan Matras
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: widget.isConnected ? widget.onDisconnect : widget.onConnectDirect,
               icon: Icon(
-                isConnected ? Icons.link_off_rounded : Icons.link_rounded,
+                widget.isConnected ? Icons.link_off_rounded : Icons.link_rounded,
                 size: 20,
               ),
               label: Text(
-                isConnected
+                widget.isConnected
                     ? 'Putuskan Koneksi Matras'
                     : 'Hubungkan ke Matras (ADVAN MF01)',
                 style: const TextStyle(
@@ -2463,33 +2825,52 @@ class _DeviceConnectionSheet extends StatelessWidget {
               ),
               style: FilledButton.styleFrom(
                 backgroundColor:
-                    isConnected ? Colors.blueGrey : AppColors.green,
+                    widget.isConnected ? Colors.blueGrey : AppColors.green,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),
             ),
           ),
-
           const SizedBox(height: 10),
 
-          // Tombol Cek Cloud Langsung
+          // Tombol 3: Salin Kata Sandi Wi-Fi
+          SizedBox(
+            width: double.infinity,
+            height: 44,
+            child: OutlinedButton.icon(
+              onPressed: _copyPassword,
+              icon: const Icon(Icons.copy_rounded, size: 18),
+              label: const Text(
+                'Salin Kata Sandi (085848719373)',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.forest,
+                side: const BorderSide(color: AppColors.border),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Tombol 4: Cek Status Cloud
           SizedBox(
             width: double.infinity,
             height: 46,
             child: OutlinedButton.icon(
-              onPressed: isCheckingCloud ? null : onCheckCloud,
-              icon: isCheckingCloud
+              onPressed: widget.isCheckingCloud ? null : widget.onCheckCloud,
+              icon: widget.isCheckingCloud
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.cloud_sync_rounded, size: 20),
               label: Text(
-                isCheckingCloud
+                widget.isCheckingCloud
                     ? 'Memeriksa Cloud Supabase...'
                     : 'Periksa Status Matras di Cloud',
                 style: const TextStyle(fontWeight: FontWeight.w600),
@@ -2503,14 +2884,13 @@ class _DeviceConnectionSheet extends StatelessWidget {
               ),
             ),
           ),
-
           const SizedBox(height: 12),
 
           // Mode Uji Coba Virtual
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: isConnected ? AppColors.softGreen : Colors.white,
+              color: widget.isConnected ? AppColors.softGreen : Colors.white,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: AppColors.border),
             ),
@@ -2537,16 +2917,15 @@ class _DeviceConnectionSheet extends StatelessWidget {
                   ),
                 ),
                 Switch(
-                  value: isConnected,
+                  value: widget.isConnected,
                   activeColor: AppColors.green,
                   onChanged: (val) {
-                    onToggleVirtual(val);
+                    widget.onToggleVirtual(val);
                   },
                 ),
               ],
             ),
           ),
-
           const SizedBox(height: 18),
           const Text(
             'Panduan Sambungan 3 Langkah:',
@@ -2563,6 +2942,19 @@ class _DeviceConnectionSheet extends StatelessWidget {
             '3. Tekan "Hubungkan ke Matras" di atas untuk menghubungkan aplikasi.',
             style: TextStyle(color: AppColors.muted, fontSize: 13, height: 1.45),
           ),
+          const SizedBox(height: 12),
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Tutup',
+                style: TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     ),
@@ -2574,11 +2966,13 @@ class _WifiInfoRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
+    this.isCopyable = false,
   });
 
   final String label;
   final String value;
   final IconData icon;
+  final bool isCopyable;
 
   @override
   Widget build(BuildContext context) => Row(
@@ -2595,6 +2989,26 @@ class _WifiInfoRow extends StatelessWidget {
           fontWeight: FontWeight.bold,
         ),
       ),
+      if (isCopyable) ...[
+        const SizedBox(width: 6),
+        InkWell(
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: value));
+            DeviceService.vibrate(durationMs: 60, enabled: true);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('$label ($value) disalin!'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: AppColors.green,
+              ),
+            );
+          },
+          child: const Padding(
+            padding: EdgeInsets.all(4),
+            child: Icon(Icons.copy_rounded, size: 16, color: AppColors.green),
+          ),
+        ),
+      ],
     ],
   );
 }
@@ -2605,12 +3019,16 @@ class _WifiInfoRow extends StatelessWidget {
 class InteractiveTrainingScreen extends StatefulWidget {
   const InteractiveTrainingScreen({
     required this.isConnected,
+    this.audioEnabled = true,
+    this.vibrationEnabled = true,
     required this.onBack,
     required this.onSessionFinished,
     super.key,
   });
 
   final bool isConnected;
+  final bool audioEnabled;
+  final bool vibrationEnabled;
   final VoidCallback onBack;
   final ValueChanged<SessionRecord> onSessionFinished;
 
@@ -2665,6 +3083,9 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
       }
     });
 
+    DeviceService.vibrate(durationMs: 150, enabled: widget.vibrationEnabled);
+    DeviceService.playAudioFeedback(enabled: widget.audioEnabled);
+
     _stopwatch = Stopwatch()..start();
     _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       if (!mounted) return;
@@ -2680,10 +3101,13 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
     if (_selectedModeIndex == 0 || _selectedModeIndex == 1) {
       // Sekuensial FSST atau Lateral
       if (tileNumber == _targetTile) {
+        DeviceService.vibrate(durationMs: 80, enabled: widget.vibrationEnabled);
+        DeviceService.playAudioFeedback(enabled: widget.audioEnabled);
         _correctHits++;
         final nextStep = _currentStep + 1;
         if ((_selectedModeIndex == 0 && nextStep >= _fsstSequence.length) ||
             (_selectedModeIndex == 1 && nextStep >= _lateralSequence.length)) {
+          DeviceService.vibrate(durationMs: 350, enabled: widget.vibrationEnabled);
           _finishTraining();
         } else {
           setState(() {
@@ -2694,12 +3118,15 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
           });
         }
       } else {
+        DeviceService.vibrate(durationMs: 220, enabled: widget.vibrationEnabled);
         setState(() => _wrongHits++);
       }
     } else {
       // Reactive T-Shape Mode
       if (_isWaitingForHome) {
         if (tileNumber == 1) {
+          DeviceService.vibrate(durationMs: 80, enabled: widget.vibrationEnabled);
+          DeviceService.playAudioFeedback(enabled: widget.audioEnabled);
           final randTarget = Random().nextInt(3) + 2; // Acak ubin 2, 3, atau 4
           setState(() {
             _isWaitingForHome = false;
@@ -2709,6 +3136,8 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
         }
       } else {
         if (tileNumber == _targetTile) {
+          DeviceService.vibrate(durationMs: 80, enabled: widget.vibrationEnabled);
+          DeviceService.playAudioFeedback(enabled: widget.audioEnabled);
           final rt =
               DateTime.now().difference(_roundStartTime!).inMilliseconds /
               1000.0;
@@ -2717,6 +3146,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
           final nextRound = _reactiveRound + 1;
 
           if (nextRound >= _maxReactiveRounds) {
+            DeviceService.vibrate(durationMs: 350, enabled: widget.vibrationEnabled);
             _finishTraining();
           } else {
             setState(() {
@@ -2726,6 +3156,7 @@ class _InteractiveTrainingScreenState extends State<InteractiveTrainingScreen> {
             });
           }
         } else {
+          DeviceService.vibrate(durationMs: 220, enabled: widget.vibrationEnabled);
           setState(() => _wrongHits++);
         }
       }
